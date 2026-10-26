@@ -1,0 +1,4 @@
+*.exe
+*_insert_*.sql
+ddl_library/
+insertgen_settings.json
