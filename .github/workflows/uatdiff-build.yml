@@ -1,0 +1,47 @@
+name: uatdiff build
+
+on:
+  push:
+    branches: [main]
+    paths: ["uatdiff/**", ".github/workflows/uatdiff-build.yml"]
+  pull_request:
+    paths: ["uatdiff/**", ".github/workflows/uatdiff-build.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: uatdiff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: uatdiff/go.mod
+          cache-dependency-path: uatdiff/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Build Windows exe
+        run: GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o uatdiff.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uatdiff-exe
+          path: uatdiff/uatdiff.exe
+      # On main, replace the exe on the "latest" release so update_uatdiff.bat
+      # always downloads the newest build from the same link.
+      - name: Publish to latest release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Bản build tự động từ commit ${GITHUB_SHA::7} ($(date -u +%Y-%m-%d\ %H:%M) UTC). Chạy update_uatdiff.bat để tải bản mới nhất."
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --title "uatdiff (bản mới nhất)" --notes "$notes"
+          else
+            gh release create latest --title "uatdiff (bản mới nhất)" --notes "$notes" --target "$GITHUB_SHA"
+          fi
+          gh release upload latest uatdiff.exe --clobber
