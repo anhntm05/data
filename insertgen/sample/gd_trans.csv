@@ -1,0 +1,4 @@
+trans_code,statement_num,branch_code,cust_name,note_text,amount,seq_no,qty,rate,txn_date,created_at,updated_at,description,is_reversal,tags,extra,ds,csv_only
+ABCD12345EFGH234,12435678654.03001,HN001,Nguyễn Văn An,O'Brien,1500000.50,1,10,0.125,26/10/2026,2026-10-26 08:30:00.120,2026-10-26 08:30:00,Chuyển khoản,true,"ARRAY['a','b']","ROW(1,'x')",2026-10-26,x
+XYZ98765QWER,12435678654.04001,HCM01,Trần Thị Bích,,NULL,2,,,2026-10-27,2026-10-27,,,0,,,2026-10-27,y
+BAD1,abc,TOOLONG,Lê,,12.345,3,1.5,,31/02/2026,,,,maybe,,,2026-10-27,z
