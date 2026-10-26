@@ -27,7 +27,7 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 - Bỏ khoảng trắng đầu/cuối; phân biệt hoa thường; NULL = rỗng = ô trống.
 - Số so sánh chính xác dạng thập phân: 1.0 = 1, 12435678654.04001 ≠ 12435678654.03001. Số có số 0 ở đầu (007) coi là chuỗi.
 - Ngày quy về yyyy-mm-dd hoặc yyyy-mm-dd hh:mm:ss (nhận: 2026-10-26, 2026/10/26, 26/10/2026, 26-OCT-26, có giờ, AM/PM). 00:00:00 coi như chỉ có ngày.
-- Note từ reference chỉ lấy cho dòng có khác biệt hoặc chỉ có ở 1 bên. Header reference được tự tìm (dòng có đủ cột key + cột note).
+- Note từ reference chỉ lấy cho dòng có khác biệt hoặc chỉ có ở 1 bên. Header reference được tự tìm (dòng có cột note và nhiều cột key nhất). Nếu reference thiếu một số cột key, tool cảnh báo ngay khi chọn file và khớp note theo các cột key còn lại.
 
 ## File kết quả
 - 5 dòng tóm tắt, header ở dòng 7. Cột: key → environment → a_uat, a_prod, ... → Khac biet → note.

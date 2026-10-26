@@ -66,11 +66,11 @@ func keyOf(row []string, idx []int, order DateOrder) string {
 
 // DupReport describes rows sharing the same key inside one file.
 type DupReport struct {
-	File      string
-	DupKeys   int            // number of keys that appear more than once
-	DupRows   int            // number of rows involved
-	DiffCols  map[string]int // column -> number of duplicate keys where it differs
-	Examples  []string       // a few duplicated keys, for display
+	File     string
+	DupKeys  int            // number of keys that appear more than once
+	DupRows  int            // number of rows involved
+	DiffCols map[string]int // column -> number of duplicate keys where it differs
+	Examples []string       // a few duplicated keys, for display
 }
 
 // SuggestedCols returns the columns that tell duplicate rows apart,
@@ -164,13 +164,13 @@ type ResultRow struct {
 }
 
 type Result struct {
-	UATName, ProdName   string
-	TotalUAT, TotalProd int
-	OnlyUAT, OnlyProd   int
+	UATName, ProdName    string
+	TotalUAT, TotalProd  int
+	OnlyUAT, OnlyProd    int
 	Matched, MatchedDiff int
-	NotesFilled         int
-	Rows                []ResultRow
-	Opts                Options
+	NotesFilled          int
+	Rows                 []ResultRow
+	Opts                 Options
 }
 
 // Compare matches rows by key. Rows sharing a key within a file are paired
@@ -252,18 +252,23 @@ func (r ResultRow) NeedsNote() bool { return r.Env != EnvBoth || r.Diff != "" }
 
 // RefNotes maps a normalized key to the note found in a reference file.
 type RefNotes struct {
-	Notes  map[string]string
-	Header int // 1-based row of the header in the reference file
-	Rows   int
+	Notes   map[string]string
+	Header  int      // 1-based row of the header in the reference file
+	KeyPos  []int    // positions in Options.Keys used for matching
+	Missing []string // key columns the reference file does not have
 }
 
-// LoadRefNotes finds the header row (the first row holding every key
-// column and a "note" column, case-insensitive) and collects non-empty notes.
+// LoadRefNotes finds the header row: the row with a "note" column and the
+// most key columns (names compared case-insensitively). When the reference
+// lacks some key columns, notes are matched on the key columns it has.
 func LoadRefNotes(path string, keys []string, order DateOrder) (*RefNotes, error) {
 	rows, err := ReadAnyRows(path)
 	if err != nil {
 		return nil, err
 	}
+	bestRow, bestNote := -1, 0
+	var bestPos []int // matched key position -> column in the reference
+	var bestKeys []int
 	for hi, hdr := range rows {
 		pos := map[string]int{}
 		for i, h := range hdr {
@@ -273,44 +278,53 @@ func LoadRefNotes(path string, keys []string, order DateOrder) (*RefNotes, error
 		if !ok {
 			continue
 		}
-		kidx := make([]int, len(keys))
-		found := true
+		var cols, kp []int
 		for i, k := range keys {
-			c, ok := pos[strings.ToLower(k)]
-			if !ok {
-				found = false
-				break
+			if c, ok := pos[strings.ToLower(k)]; ok {
+				cols, kp = append(cols, c), append(kp, i)
 			}
-			kidx[i] = c
 		}
-		if !found {
+		if len(kp) > len(bestKeys) {
+			bestRow, bestNote, bestPos, bestKeys = hi, noteCol, cols, kp
+		}
+		if len(kp) == len(keys) {
+			break
+		}
+	}
+	if bestRow < 0 {
+		return nil, fmt.Errorf("không tìm thấy dòng header có cột note và ít nhất 1 cột key (%s)", strings.Join(keys, ", "))
+	}
+	rn := &RefNotes{Notes: map[string]string{}, Header: bestRow + 1, KeyPos: bestKeys}
+	have := map[int]bool{}
+	for _, k := range bestKeys {
+		have[k] = true
+	}
+	for i, k := range keys {
+		if !have[i] {
+			rn.Missing = append(rn.Missing, k)
+		}
+	}
+	for _, r := range rows[bestRow+1:] {
+		get := func(i int) string {
+			if i < len(r) {
+				return unwrapExcelText(r[i])
+			}
+			return ""
+		}
+		note := strings.TrimSpace(get(bestNote))
+		if note == "" {
 			continue
 		}
-		rn := &RefNotes{Notes: map[string]string{}, Header: hi + 1}
-		for _, r := range rows[hi+1:] {
-			get := func(i int) string {
-				if i < len(r) {
-					return unwrapExcelText(r[i])
-				}
-				return ""
-			}
-			note := strings.TrimSpace(get(noteCol))
-			if note == "" {
-				continue
-			}
-			parts := make([]string, len(kidx))
-			for i, c := range kidx {
-				parts[i] = CompareKey(get(c), order)
-			}
-			k := strings.Join(parts, "\x1f")
-			if _, exists := rn.Notes[k]; !exists {
-				rn.Notes[k] = note
-				rn.Rows++
-			}
+		parts := make([]string, len(bestPos))
+		for i, c := range bestPos {
+			parts[i] = CompareKey(get(c), order)
 		}
-		return rn, nil
+		k := strings.Join(parts, "\x1f")
+		if _, exists := rn.Notes[k]; !exists {
+			rn.Notes[k] = note
+		}
 	}
-	return nil, fmt.Errorf("không tìm thấy dòng header có đủ các cột key (%s) và cột note", strings.Join(keys, ", "))
+	return rn, nil
 }
 
 // ApplyNotes copies notes from the reference into rows that need one.
@@ -320,9 +334,9 @@ func (res *Result) ApplyNotes(rn *RefNotes) {
 		if !r.NeedsNote() {
 			continue
 		}
-		parts := make([]string, len(r.Keys))
-		for j, v := range r.Keys {
-			parts[j] = CompareKey(v, res.Opts.Order)
+		parts := make([]string, len(rn.KeyPos))
+		for j, p := range rn.KeyPos {
+			parts[j] = CompareKey(r.Keys[p], res.Opts.Order)
 		}
 		if n, ok := rn.Notes[strings.Join(parts, "\x1f")]; ok {
 			r.Note, r.NoteFrom = n, true

@@ -13,9 +13,10 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 )
 
-const version = "1.0.0"
+const version = "1.0.1"
 
 var (
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).
@@ -32,6 +33,19 @@ var (
 )
 
 var errAbort = errors.New("aborted")
+
+// box renders a bordered panel that wraps instead of overflowing the
+// terminal, so long messages stay inside the frame.
+func box(st lipgloss.Style, s string) string {
+	w, _, err := term.GetSize(os.Stdout.Fd())
+	if err != nil || w <= 0 {
+		w = 100
+	}
+	if lipgloss.Width(s)+4 > w {
+		st = st.Width(w - 2)
+	}
+	return st.Render(s)
+}
 
 func main() {
 	fmt.Println()
@@ -145,7 +159,7 @@ func session(args []string) error {
 		opts.Compare = keepOrder(nonKeys, opts.Compare)
 	}
 
-	refPath, err := pickRef()
+	refPath, ref, err := pickRef(opts.Keys, opts.Order)
 	if err != nil {
 		return err
 	}
@@ -168,13 +182,8 @@ func session(args []string) error {
 
 	begin := time.Now()
 	res := Compare(uat, prod, opts)
-	if refPath != "" {
-		rn, err := LoadRefNotes(refPath, opts.Keys, opts.Order)
-		if err != nil {
-			fmt.Println(errStyle.Render("Không dùng được file reference: ") + err.Error())
-		} else {
-			res.ApplyNotes(rn)
-		}
+	if ref != nil {
+		res.ApplyNotes(ref)
 	}
 	res.SortRows()
 
@@ -198,7 +207,7 @@ func session(args []string) error {
 		}
 		written = append(written, p)
 	}
-	showResult(res, written, time.Since(begin))
+	showResult(res, refPath, written, time.Since(begin))
 
 	if len(written) > 0 && runtime.GOOS == "windows" {
 		var open bool
@@ -247,15 +256,15 @@ func pickFile(title string, exts []string, near, hint string) (string, error) {
 		err := ask(huh.NewInput().Title(title).
 			Description("Kéo file từ Explorer thả vào cửa sổ này, hoặc dán đường dẫn, rồi Enter.").
 			Value(&p).Validate(func(s string) error {
-				s = CleanPath(s)
-				if s == "" {
-					return errors.New("chưa nhập đường dẫn")
-				}
-				if st, err := os.Stat(s); err != nil || st.IsDir() {
-					return errors.New("không tìm thấy file")
-				}
-				return nil
-			}))
+			s = CleanPath(s)
+			if s == "" {
+				return errors.New("chưa nhập đường dẫn")
+			}
+			if st, err := os.Stat(s); err != nil || st.IsDir() {
+				return errors.New("không tìm thấy file")
+			}
+			return nil
+		}))
 		return CleanPath(p), err
 	case browse:
 		var p string
@@ -308,7 +317,7 @@ func showFiles(uat, prod *Table, cc ColumnCheck) {
 		boldStyle.Render("PROD:"), fmt.Sprintf("%s  (%d dòng, %d cột)", prod.Name(), len(prod.Rows), len(prod.Headers)),
 		boldStyle.Render("Cột chung:"), len(cc.Common))
 	info += "\n" + dimStyle.Render(wrapList(cc.Common, 90))
-	fmt.Println(boxStyle.Render(info))
+	fmt.Println(box(boxStyle, info))
 	if len(cc.OnlyUAT)+len(cc.OnlyProd) > 0 {
 		var b strings.Builder
 		b.WriteString(boldStyle.Render("⚠ Có cột không trùng tên giữa 2 file. Các cột này sẽ KHÔNG được dùng để so sánh hoặc làm key:"))
@@ -318,7 +327,7 @@ func showFiles(uat, prod *Table, cc ColumnCheck) {
 		if len(cc.OnlyProd) > 0 {
 			b.WriteString("\n  Chỉ có ở PROD: " + strings.Join(cc.OnlyProd, ", "))
 		}
-		fmt.Println(warnStyle.Render(b.String()))
+		fmt.Println(box(warnStyle, b.String()))
 	}
 	fmt.Println()
 }
@@ -418,7 +427,13 @@ func checkDuplicates(uat, prod *Table, opts Options, nonKeys []string) (bool, er
 	b.WriteString(boldStyle.Render("⚠ Key bị trùng trong cùng 1 file"))
 	suggest := map[string]int{}
 	for _, r := range reps {
-		fmt.Fprintf(&b, "\n%s: %d key trùng (%d dòng). Ví dụ: %s", r.File, r.DupKeys, r.DupRows, strings.Join(r.Examples, " | "))
+		fmt.Fprintf(&b, "\n%s: %d key trùng (%d dòng). Ví dụ:", r.File, r.DupKeys, r.DupRows)
+		for i, e := range r.Examples {
+			if i >= 3 {
+				break
+			}
+			b.WriteString("\n  • " + e)
+		}
 		for _, c := range r.SuggestedCols() {
 			suggest[c] += r.DiffCols[c]
 		}
@@ -442,7 +457,7 @@ func checkDuplicates(uat, prod *Table, opts Options, nonKeys []string) (bool, er
 	} else {
 		b.WriteString("\nCác dòng trùng key giống hệt nhau ở mọi cột (dòng bị lặp).")
 	}
-	fmt.Println(warnStyle.Render(b.String()))
+	fmt.Println(box(warnStyle, b.String()))
 	retry := true
 	err := ask(huh.NewConfirm().Title("Bạn muốn làm gì?").
 		Description("Nếu tiếp tục, các dòng trùng key sẽ được ghép theo thứ tự xuất hiện trong file.").
@@ -451,14 +466,59 @@ func checkDuplicates(uat, prod *Table, opts Options, nonKeys []string) (bool, er
 	return retry, err
 }
 
-func pickRef() (string, error) {
+// pickRef asks for a reference file and checks it against the chosen keys
+// right away, so a file that cannot be matched is caught before the run.
+func pickRef(keys []string, order DateOrder) (string, *RefNotes, error) {
 	use := false
 	if err := ask(huh.NewConfirm().Title("Dùng file reference để lấy note?").
-		Description("File kết quả cũ (.xlsx hoặc .csv) có cùng cột key và cột note.\nNote chỉ được lấy cho dòng có khác biệt hoặc chỉ có ở 1 bên.").
+		Description("File kết quả cũ (.xlsx hoặc .csv) có cột key và cột note.\nNote chỉ được lấy cho dòng có khác biệt hoặc chỉ có ở 1 bên.").
 		Affirmative("Có").Negative("Không").Value(&use)); err != nil || !use {
-		return "", err
+		return "", nil, err
 	}
-	return pickFile("Chọn file reference (.xlsx / .csv)", []string{".xlsx", ".csv"}, "", "sosanh")
+	for {
+		p, err := pickFile("Chọn file reference (.xlsx / .csv)", []string{".xlsx", ".csv"}, "", "sosanh")
+		if err != nil {
+			return "", nil, err
+		}
+		rn, err := LoadRefNotes(p, keys, order)
+		if err == nil {
+			var b strings.Builder
+			matched := make([]string, len(rn.KeyPos))
+			for i, kp := range rn.KeyPos {
+				matched[i] = keys[kp]
+			}
+			fmt.Fprintf(&b, "Reference: %s (%d note)\nKhớp note theo cột: %s",
+				filepath.Base(p), len(rn.Notes), strings.Join(matched, ", "))
+			if len(rn.Missing) == 0 {
+				fmt.Println(box(boxStyle, okStyle.Render("✓ ")+b.String()))
+				fmt.Println()
+				return p, rn, nil
+			}
+			fmt.Fprintf(&b, "\n%s File reference không có cột key: %s\nNote sẽ được khớp chỉ theo các cột ở trên, nhiều dòng có thể nhận cùng 1 note.",
+				boldStyle.Render("⚠"), strings.Join(rn.Missing, ", "))
+			fmt.Println(box(warnStyle, b.String()))
+			keep := true
+			if err := ask(huh.NewConfirm().Title("Dùng file reference này?").
+				Affirmative("Vẫn dùng").Negative("Chọn file khác").Value(&keep)); err != nil {
+				return "", nil, err
+			}
+			fmt.Println()
+			if keep {
+				return p, rn, nil
+			}
+			continue
+		}
+		fmt.Println(box(warnStyle, boldStyle.Render("⚠ Không dùng được file reference: ")+err.Error()))
+		retry := true
+		if err := ask(huh.NewConfirm().Title("Chọn file reference khác?").
+			Affirmative("Chọn file khác").Negative("Bỏ qua reference").Value(&retry)); err != nil {
+			return "", nil, err
+		}
+		fmt.Println()
+		if !retry {
+			return "", nil, nil
+		}
+	}
 }
 
 var envOrders = [][3]int{
@@ -500,7 +560,7 @@ func pickSort(opts *Options) error {
 	opts.Sort = []SortSpec{{Field: "environment"}, {Field: "note", Desc: true}}
 	useDefault := true
 	if err := ask(huh.NewConfirm().Title("Thứ tự sắp xếp file kết quả").
-		Description("Mặc định:\n  "+sortLabel(*opts)+"\nDòng không có note luôn nằm cuối.").
+		Description("Mặc định:\n  " + sortLabel(*opts) + "\nDòng không có note luôn nằm cuối.").
 		Affirmative("Dùng mặc định").Negative("Tuỳ chỉnh").Value(&useDefault)); err != nil {
 		return err
 	}
@@ -549,7 +609,7 @@ func pickSort(opts *Options) error {
 			return nil
 		}
 		desc := false
-		if err := ask(huh.NewSelect[bool]().Title("Chiều sắp xếp cho " + f).
+		if err := ask(huh.NewSelect[bool]().Title("Chiều sắp xếp cho "+f).
 			Options(huh.NewOption("A-Z / nhỏ → lớn", false), huh.NewOption("Z-A / lớn → nhỏ", true)).Value(&desc)); err != nil {
 			return err
 		}
@@ -592,19 +652,22 @@ func showPlan(uat, prod *Table, o Options, ref, out, format string) {
 		"Sắp xếp    : " + strings.ReplaceAll(sortLabel(o), "\n  ", "\n             "),
 		"Kết quả    : " + out + " (" + format + ")",
 	}
-	fmt.Println(boxStyle.Render(strings.Join(lines, "\n")))
+	fmt.Println(box(boxStyle, strings.Join(lines, "\n")))
 }
 
-func showResult(res *Result, files []string, d time.Duration) {
+func showResult(res *Result, ref string, files []string, d time.Duration) {
 	lines := []string{okStyle.Render("✓ So sánh xong") + dimStyle.Render(fmt.Sprintf("  (%.1fs)", d.Seconds()))}
+	lines = append(lines,
+		boldStyle.Render("Key: ")+strings.Join(res.Opts.Keys, ", "),
+		fmt.Sprintf("So sánh %d cột", len(res.Opts.Compare)))
 	lines = append(lines, res.SummaryLines()[1:4]...)
-	if res.NotesFilled > 0 {
-		lines = append(lines, fmt.Sprintf("Note lấy từ file reference: %d", res.NotesFilled))
+	if ref != "" {
+		lines = append(lines, fmt.Sprintf("Note lấy từ file reference (%s): %d", filepath.Base(ref), res.NotesFilled))
 	}
 	for _, f := range files {
 		lines = append(lines, boldStyle.Render("File: ")+f)
 	}
-	fmt.Println(boxStyle.Render(strings.Join(lines, "\n")))
+	fmt.Println(box(boxStyle, strings.Join(lines, "\n")))
 }
 
 func without(list, remove []string) []string {

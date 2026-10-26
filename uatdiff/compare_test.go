@@ -113,3 +113,21 @@ func TestCompareFlow(t *testing.T) {
 		t.Fatal(err, rn3)
 	}
 }
+
+func TestRefNotesSubsetOfKeys(t *testing.T) {
+	dir := t.TempDir()
+	ref := write(t, dir, "ref.csv", "title\nid,environment,note\n1,x,mask\n")
+	rn, err := LoadRefNotes(ref, []string{"id", "branch"}, DMY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rn.Missing) != 1 || rn.Missing[0] != "branch" || len(rn.KeyPos) != 1 {
+		t.Fatalf("%+v", rn)
+	}
+	res := &Result{Opts: Options{Keys: []string{"id", "branch"}},
+		Rows: []ResultRow{{Env: EnvOnlyUAT, Keys: []string{"1", "HN"}}, {Env: EnvBoth, Keys: []string{"1", "HCM"}}}}
+	res.ApplyNotes(rn)
+	if res.Rows[0].Note != "mask" || res.Rows[1].Note != "" || res.NotesFilled != 1 {
+		t.Fatalf("%+v", res.Rows)
+	}
+}
