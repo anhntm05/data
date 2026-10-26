@@ -2,3 +2,5 @@ uatdiff_v1.0.0.zip
 uatdiff_source.zip
 *.exe
 *.exe.new
+ddl_library/
+insertgen_settings.json

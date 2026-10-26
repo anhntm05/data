@@ -35,6 +35,62 @@ type GenOptions struct {
 	SkipBad     bool // leave out rows that have errors
 	Source      string
 	TotalRows   int
+	Transforms  []Transform
+}
+
+type TransformKind int
+
+const (
+	TSuffix TransformKind = iota // append Text + a running number, e.g. ANHTM01
+	TSet                         // replace the value with Text
+)
+
+// Transform changes one column's values before they are validated.
+type Transform struct {
+	Kind   TransformKind
+	Col    int    // index into GenOptions.Cols
+	Text   string // suffix text, or the new value
+	Start  int    // first number for TSuffix
+	Digits int    // zero padding for TSuffix
+	Match  string // TSet: only replace values equal to this; empty = all
+}
+
+func (tr Transform) Describe(cols []Column) string {
+	name := cols[tr.Col].Name
+	if tr.Kind == TSuffix {
+		return fmt.Sprintf("%s thêm hậu tố %s%0*d, %s%0*d...", name, tr.Text, tr.Digits, tr.Start, tr.Text, tr.Digits, tr.Start+1)
+	}
+	if tr.Match != "" {
+		return fmt.Sprintf("%s: %q đổi thành %q", name, tr.Match, tr.Text)
+	}
+	return fmt.Sprintf("%s: mọi dòng = %q", name, tr.Text)
+}
+
+// apply returns the value for row n (0-based) after the transform.
+func (tr Transform) apply(raw string, n int, order DateOrder) string {
+	switch tr.Kind {
+	case TSuffix:
+		if IsNull(raw) {
+			return raw
+		}
+		return raw + fmt.Sprintf("%s%0*d", tr.Text, tr.Digits, tr.Start+n)
+	default:
+		if tr.Match == "" || sameValue(raw, tr.Match, order) {
+			return tr.Text
+		}
+		return raw
+	}
+}
+
+// sameValue compares trimmed text, and dates in any accepted format.
+func sameValue(a, b string, order DateOrder) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == b {
+		return true
+	}
+	da, ok1 := normDate(a, order)
+	db, ok2 := normDate(b, order)
+	return ok1 && ok2 && da == db
 }
 
 // Issue is a problem found in one cell.
@@ -67,6 +123,11 @@ func Prepare(t *Table, o GenOptions) ([]PreparedRow, []Issue) {
 			raw := ""
 			if o.CSVIdx[j] >= 0 {
 				raw = r[o.CSVIdx[j]]
+			}
+			for _, tr := range o.Transforms {
+				if tr.Col == j {
+					raw = tr.apply(raw, i, o.Order)
+				}
 			}
 			lit, msg, isErr := Literal(c, raw, o)
 			pr.Vals[j] = lit
@@ -274,6 +335,10 @@ func Generate(rows []PreparedRow, o GenOptions) (string, GenStats) {
 
 	fmt.Fprintf(&b, "-- Sinh bởi insertgen %s lúc %s\n", version, time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "-- Nguồn: %s (%d dòng) | Bảng: %s | %s\n", o.Source, o.TotalRows, o.Table, dialectName[o.Dialect])
+
+	for _, tr := range o.Transforms {
+		fmt.Fprintf(&b, "-- Biến đổi: %s\n", tr.Describe(o.Cols))
+	}
 
 	var keep []PreparedRow
 	for _, r := range rows {

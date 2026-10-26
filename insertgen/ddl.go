@@ -48,7 +48,8 @@ type TableDef struct {
 	Schema, Name             string
 	SchemaQuoted, NameQuoted bool
 	Columns                  []Column
-	Athena                   bool // looks like Athena / Hive DDL
+	Athena                   bool   // looks like Athena / Hive DDL
+	SQL                      string // the CREATE TABLE text, kept for the DDL library
 }
 
 func (t *TableDef) FullName() string {
@@ -80,6 +81,7 @@ func ParseDDL(text string) ([]*TableDef, error) {
 		if err != nil {
 			return nil, err
 		}
+		t.SQL = strings.TrimSpace(src[loc[0]:end])
 		out = append(out, t)
 	}
 	return out, nil

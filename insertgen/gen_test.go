@@ -204,3 +204,65 @@ func TestEdgeLiterals(t *testing.T) {
 		t.Error(lit)
 	}
 }
+
+func TestTransforms(t *testing.T) {
+	td := loadDDL(t, "sample/ddl_oracle.sql")
+	csv, _ := ReadCSV("sample/gd_trans.csv")
+	o := GenOptions{Dialect: Oracle, Table: "T", Order: DMY}
+	for _, n := range []string{"TRANS_CODE", "TXN_DATE"} {
+		c := col(t, td, n)
+		for i, h := range csv.Headers {
+			if strings.EqualFold(h, n) {
+				o.Cols, o.CSVIdx = append(o.Cols, c), append(o.CSVIdx, i)
+			}
+		}
+	}
+	// TRANS_CODE is VARCHAR2(16): row 1 (16 chars) overflows with a suffix, row 2 fits.
+	o.Transforms = []Transform{
+		{Kind: TSuffix, Col: 0, Text: "AN", Start: 1, Digits: 2},
+		{Kind: TSet, Col: 1, Text: "03/12/2025", Match: "2026-10-27"},
+	}
+	rows, issues := Prepare(csv, o)
+	if rows[1].Vals[0] != "'XYZ98765QWERAN02'" || !rows[0].Bad || issues[0].Msg != "dài 20 byte, vượt VARCHAR2(16 BYTE)" {
+		t.Fatalf("%v %v", rows[1].Vals, issues)
+	}
+	if rows[0].Vals[1] != "TO_DATE('2026-10-26','YYYY-MM-DD')" || rows[1].Vals[1] != "TO_DATE('2025-12-03','YYYY-MM-DD')" {
+		t.Fatalf("%v %v", rows[0].Vals, rows[1].Vals)
+	}
+	sql, _ := Generate(rows, o)
+	if !strings.Contains(sql, "-- Biến đổi: TRANS_CODE thêm hậu tố AN01, AN02...") {
+		t.Fatal(sql)
+	}
+	all := Transform{Kind: TSet, Text: "X"}
+	if all.apply("anything", 0, DMY) != "X" {
+		t.Fatal("set all")
+	}
+	suf := Transform{Kind: TSuffix, Text: "ANHTM", Start: 1, Digits: 2}
+	if suf.apply("", 3, DMY) != "" || suf.apply("A", 98, DMY) != "AANHTM99" || suf.apply("A", 99, DMY) != "AANHTM100" {
+		t.Fatal("suffix")
+	}
+}
+
+func TestLibrary(t *testing.T) {
+	td := loadDDL(t, "sample/ddl_athena.sql")
+	t.Cleanup(func() { os.RemoveAll(libDir()); os.Remove(settingsPath()) })
+	p, replaced, err := SaveDDL(td)
+	if err != nil || replaced {
+		t.Fatal(err, replaced)
+	}
+	if _, replaced, _ := SaveDDL(td); replaced {
+		t.Fatal("same DDL must not count as replaced")
+	}
+	lib := ListDDL()
+	if len(lib) != 1 || lib[0].Name != "test_db.gd_trans" || lib[0].Path != p {
+		t.Fatalf("%+v", lib)
+	}
+	back, err := LoadDDL(p)
+	if err != nil || len(back.Columns) != len(td.Columns) || !back.Athena {
+		t.Fatal(err)
+	}
+	SaveSettings(Settings{Suffix: "QA", Digits: 3})
+	if s := LoadSettings(); s.Suffix != "QA" || s.Digits != 3 {
+		t.Fatal(s)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 func main() {
 	fmt.Println()
@@ -114,6 +115,9 @@ func session(prev *TableDef) (*TableDef, error) {
 		return ddl, err
 	}
 	o.Table = strings.TrimSpace(o.Table)
+	if err := pickTransforms(&o, t); err != nil {
+		return ddl, err
+	}
 
 	rows, issues := Prepare(t, o)
 	if bad := showIssues(issues, rows); bad > 0 {
@@ -167,11 +171,28 @@ func session(prev *TableDef) (*TableDef, error) {
 }
 
 func pickDDL() (*TableDef, error) {
+	lib := ListDDL()
 	mode := "file"
-	if err := ask(huh.NewSelect[string]().Title("Lấy DDL từ đâu?").Options(
-		huh.NewOption("File .sql / .ddl / .txt", "file"),
-		huh.NewOption("Dán DDL vào đây", "paste")).Value(&mode)); err != nil {
+	var opts []huh.Option[string]
+	if len(lib) > 0 {
+		mode = "lib"
+		opts = append(opts, huh.NewOption(fmt.Sprintf("Bảng đã lưu (%d bảng)", len(lib)), "lib"))
+	}
+	opts = append(opts, huh.NewOption("File .sql / .ddl / .txt", "file"), huh.NewOption("Dán DDL vào đây", "paste"))
+	if err := ask(huh.NewSelect[string]().Title("Lấy DDL từ đâu?").Options(opts...).Value(&mode)); err != nil {
 		return nil, err
+	}
+	if mode == "lib" {
+		var items []huh.Option[string]
+		for _, e := range lib {
+			items = append(items, huh.NewOption(e.Name+dimStyle.Render("  dùng lần cuối "+e.Mod.Format("2006-01-02 15:04")), e.Path))
+		}
+		p := lib[0].Path
+		if err := ask(huh.NewSelect[string]().Title("Chọn bảng").Description("Gõ / để tìm theo tên bảng.").
+			Options(items...).Value(&p).Height(min(len(items)+3, 16))); err != nil {
+			return nil, err
+		}
+		return LoadDDL(p)
 	}
 	var text string
 	if mode == "paste" {
@@ -195,18 +216,41 @@ func pickDDL() (*TableDef, error) {
 	if err != nil {
 		return nil, err
 	}
+	saveToLibrary(tables)
 	if len(tables) == 1 {
 		return tables[0], nil
 	}
-	var opts []huh.Option[int]
+	var topts []huh.Option[int]
 	for i, t := range tables {
-		opts = append(opts, huh.NewOption(fmt.Sprintf("%s (%d cột)", t.FullName(), len(t.Columns)), i))
+		topts = append(topts, huh.NewOption(fmt.Sprintf("%s (%d cột)", t.FullName(), len(t.Columns)), i))
 	}
 	pick := 0
-	if err := ask(huh.NewSelect[int]().Title("DDL có nhiều bảng, chọn 1 bảng").Options(opts...).Value(&pick)); err != nil {
+	if err := ask(huh.NewSelect[int]().Title("DDL có nhiều bảng, chọn 1 bảng").Options(topts...).Value(&pick)); err != nil {
 		return nil, err
 	}
 	return tables[pick], nil
+}
+
+// saveToLibrary stores every parsed table so it can be picked next time.
+func saveToLibrary(tables []*TableDef) {
+	var saved, updated []string
+	for _, t := range tables {
+		_, replaced, err := SaveDDL(t)
+		switch {
+		case err != nil:
+			fmt.Println(errStyle.Render("Không lưu được DDL "+t.FullName()+": ") + err.Error())
+		case replaced:
+			updated = append(updated, t.FullName())
+		default:
+			saved = append(saved, t.FullName())
+		}
+	}
+	if len(saved) > 0 {
+		fmt.Println(okStyle.Render("✓ Đã lưu DDL: ") + strings.Join(saved, ", ") + dimStyle.Render("  ("+libDir()+")"))
+	}
+	if len(updated) > 0 {
+		fmt.Println(okStyle.Render("✓ Đã cập nhật DDL mới cho: ") + strings.Join(updated, ", "))
+	}
 }
 
 func showTable(t *TableDef) {
@@ -473,4 +517,109 @@ func showResult(sql string, st GenStats, out string) {
 		}
 	}
 	fmt.Println(box(boxStyle, strings.Join(lines, "\n")))
+}
+
+// pickTransforms lets the user add running-number suffixes to string
+// columns and set fixed values, repeated until they are done.
+func pickTransforms(o *GenOptions, t *Table) error {
+	set := LoadSettings()
+	for {
+		desc := "Ví dụ: thêm hậu tố ANHTM01, ANHTM02... vào mã giao dịch, hoặc đổi business_date của mọi dòng sang 03/12/2025."
+		if len(o.Transforms) > 0 {
+			var l []string
+			for _, tr := range o.Transforms {
+				l = append(l, "• "+tr.Describe(o.Cols))
+			}
+			desc = "Đã chọn:\n" + strings.Join(l, "\n")
+		}
+		action := "done"
+		if err := ask(huh.NewSelect[string]().Title("Biến đổi dữ liệu trước khi sinh INSERT?").Description(desc).Options(
+			huh.NewOption("Xong, không biến đổi thêm", "done"),
+			huh.NewOption("Thêm hậu tố tăng dần cho cột chuỗi (vd "+set.Suffix+"01, "+set.Suffix+"02...)", "suffix"),
+			huh.NewOption("Đặt giá trị mới cho cả cột (vd đổi ngày)", "set")).Value(&action)); err != nil {
+			return err
+		}
+		if action == "done" {
+			fmt.Println()
+			return nil
+		}
+		var colOpts []huh.Option[int]
+		for i, c := range o.Cols {
+			if action == "suffix" && c.Kind != KString {
+				continue
+			}
+			sample := ""
+			if len(t.Rows) > 0 {
+				sample = strings.TrimSpace(t.Rows[0][o.CSVIdx[i]])
+				if len([]rune(sample)) > 25 {
+					sample = string([]rune(sample)[:25]) + "..."
+				}
+			}
+			colOpts = append(colOpts, huh.NewOption(c.Name+dimStyle.Render("  "+strings.ToLower(c.Type)+"  vd: "+sample), i))
+		}
+		if len(colOpts) == 0 {
+			fmt.Println(errStyle.Render("Không có cột chuỗi nào để thêm hậu tố."))
+			continue
+		}
+		col := colOpts[0].Value
+		if err := ask(huh.NewSelect[int]().Title("Chọn cột").Options(colOpts...).Value(&col).Height(min(len(colOpts)+3, 16))); err != nil {
+			return err
+		}
+		c := o.Cols[col]
+		if action == "suffix" {
+			text, start, digits := set.Suffix, "1", fmt.Sprint(set.Digits)
+			if err := ask(
+				huh.NewInput().Title("Hậu tố").Value(&text).Validate(func(s string) error {
+					if strings.ContainsAny(s, "'") {
+						return errors.New("không dùng dấu '")
+					}
+					return nil
+				}),
+				huh.NewInput().Title("Bắt đầu từ số").Value(&start).Validate(isNumber),
+				huh.NewInput().Title("Số chữ số (2 → 01, 02...)").Value(&digits).Validate(isNumber),
+			); err != nil {
+				return err
+			}
+			tr := Transform{Kind: TSuffix, Col: col, Text: text, Start: atoi(start), Digits: max(1, atoi(digits))}
+			if last := tr.Start + len(t.Rows) - 1; len(fmt.Sprint(last)) > tr.Digits {
+				fmt.Println(box(warnStyle, fmt.Sprintf("⚠ CSV có %d dòng nên số sẽ chạy tới %d, dài hơn %d chữ số.", len(t.Rows), last, tr.Digits)))
+			}
+			if c.Length > 0 {
+				fmt.Println(dimStyle.Render(fmt.Sprintf("Lưu ý: %s là %s, giá trị sau khi thêm hậu tố vẫn được kiểm tra độ dài.", c.Name, c.Type)))
+			}
+			o.Transforms = append(o.Transforms, tr)
+			set.Suffix, set.Digits = text, tr.Digits
+			SaveSettings(set)
+			continue
+		}
+		var val, match string
+		hint := ""
+		if c.Kind == KDate || c.Kind == KTimestamp {
+			hint = "Ngày viết dạng nào cũng được: 03/12/2025, 2025-12-03..."
+		}
+		if err := ask(
+			huh.NewInput().Title("Giá trị mới cho "+c.Name).Description(strings.TrimSpace(hint+" Để trống = NULL.")).Value(&val),
+			huh.NewInput().Title("Chỉ đổi các dòng đang có giá trị (để trống = đổi tất cả)").
+				Description("Vd 02/12/2025 để chỉ đổi những dòng có ngày đó.").Value(&match),
+		); err != nil {
+			return err
+		}
+		tr := Transform{Kind: TSet, Col: col, Text: strings.TrimSpace(val), Match: strings.TrimSpace(match)}
+		if lit, msg, isErr := Literal(c, tr.Text, *o); isErr {
+			fmt.Println(box(warnStyle, "⚠ Giá trị "+tr.Text+" không hợp lệ với cột "+c.Name+": "+msg))
+			continue
+		} else {
+			fmt.Println(dimStyle.Render("Sẽ ghi vào SQL: " + lit))
+		}
+		o.Transforms = append(o.Transforms, tr)
+	}
+}
+
+var reDigits = regexp.MustCompile(`^\d{1,6}$`)
+
+func isNumber(s string) error {
+	if !reDigits.MatchString(strings.TrimSpace(s)) {
+		return errors.New("nhập số nguyên dương")
+	}
+	return nil
 }
