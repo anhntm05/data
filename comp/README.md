@@ -44,4 +44,4 @@ Cài Go từ https://go.dev/dl, rồi trong thư mục `comp`:
 - Windows: double-click `build.bat`.
 - Mac/Linux: chạy `./build.sh`.
 
-Script chạy test rồi tạo `comp_<yyyymmdd_hhmmss>.exe` (Windows 64-bit, ví dụ `comp_20261028_180500.exe`) ngay trong thư mục này. Chép file exe sang máy công ty là dùng được.
+Script chạy test rồi tạo `comp_<yyyymmdd_hhmmss>.exe` (Windows 64-bit, ví dụ `comp_20261028_180500.exe`) trong thư mục `exe/`, tự tạo nếu chưa có. Chép file exe sang máy công ty là dùng được.
