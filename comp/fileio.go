@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
@@ -145,8 +147,8 @@ func isXLSX(path string) bool {
 }
 
 // ReadSheetRows returns the cells of one sheet, or of a CSV file (sheet is
-// ignored). Excel cells are read as displayed, so dates and numbers keep the
-// format the user sees.
+// ignored). Excel cells are read as stored, so big numbers keep every
+// decimal; cells with a date format are written as yyyy-mm-dd[ hh:mm:ss].
 func ReadSheetRows(path, sheet string) ([][]string, error) {
 	if !isXLSX(path) {
 		return readCSVRows(path)
@@ -156,8 +158,57 @@ func ReadSheetRows(path, sheet string) ([][]string, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return f.GetRows(sheet)
+	rows, err := f.GetRows(sheet, excelize.Options{RawCellValue: true})
+	if err != nil {
+		return nil, err
+	}
+	isDate := map[int]bool{} // style id -> has a date format
+	for ri, r := range rows {
+		for ci, v := range r {
+			n, err := strconv.ParseFloat(v, 64)
+			if err != nil || n < 0 {
+				continue
+			}
+			cell, _ := excelize.CoordinatesToCellName(ci+1, ri+1)
+			sid, err := f.GetCellStyle(sheet, cell)
+			if err != nil || sid == 0 {
+				continue
+			}
+			d, ok := isDate[sid]
+			if !ok {
+				st, err := f.GetStyle(sid)
+				d = err == nil && isDateFormat(st)
+				isDate[sid] = d
+			}
+			if !d {
+				continue
+			}
+			if t, err := excelize.ExcelDateToTime(n, false); err == nil {
+				layout := "2006-01-02"
+				if n != float64(int64(n)) {
+					layout = "2006-01-02 15:04:05"
+				}
+				r[ci] = t.Format(layout)
+			}
+		}
+	}
+	return rows, nil
 }
+
+// isDateFormat reports whether a cell style shows a date or a time.
+func isDateFormat(st *excelize.Style) bool {
+	if st.CustomNumFmt != nil {
+		code := strings.ToLower(*st.CustomNumFmt)
+		code = reFmtNoise.ReplaceAllString(code, "")
+		return strings.ContainsAny(code, "ydh")
+	}
+	id := st.NumFmt
+	return id >= 14 && id <= 22 || id >= 45 && id <= 47
+}
+
+// reFmtNoise matches quoted text, [color]/[$-locale] parts and escaped
+// characters inside a number format code.
+var reFmtNoise = regexp.MustCompile(`"[^"]*"|\[[^\]]*\]|\\.`)
 
 // unwrapExcelText undoes the ="..." wrapping written to CSV output.
 func unwrapExcelText(s string) string {

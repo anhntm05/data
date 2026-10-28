@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/xuri/excelize/v2"
 )
 
 func TestNormalize(t *testing.T) {
@@ -143,5 +146,41 @@ func TestRefNotesSubsetOfKeys(t *testing.T) {
 	}
 	if n, ok := nm.Lookup([]string{"1", "HN"}, DMY); !ok || n != "mask" {
 		t.Fatalf("%q %v", n, ok)
+	}
+}
+
+func TestReadXLSXInput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "in.xlsx")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Info")
+	f.NewSheet("Data")
+	f.SetSheetRow("Data", "A1", &[]interface{}{"id", "ngay", "amount", "code"})
+	f.SetSheetRow("Data", "A2", &[]interface{}{1, time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC), 69274598800.73578, "007"})
+	f.SetSheetRow("Data", "A3", &[]interface{}{2, time.Date(2026, 10, 27, 8, 30, 0, 0, time.UTC), 1.5, "A"})
+	dateStyle, _ := f.NewStyle(&excelize.Style{NumFmt: 14})
+	f.SetCellStyle("Data", "B2", "B2", dateStyle)
+	custom := "dd/mm/yyyy hh:mm"
+	timeStyle, _ := f.NewStyle(&excelize.Style{CustomNumFmt: &custom})
+	f.SetCellStyle("Data", "B3", "B3", timeStyle)
+	money, _ := f.NewStyle(&excelize.Style{NumFmt: 4}) // #,##0.00
+	f.SetCellStyle("Data", "C2", "C3", money)
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	names, err := SheetNames(path)
+	if err != nil || strings.Join(names, ",") != "Info,Data" {
+		t.Fatal(err, names)
+	}
+	tb, err := LoadTable(path, "Data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"1", "2026-10-26", "69274598800.73578", "007"}, {"2", "2026-10-27 08:30:00", "1.5", "A"}}
+	for i, w := range want {
+		if strings.Join(tb.Rows[i], "|") != strings.Join(w, "|") {
+			t.Errorf("row %d = %v, want %v", i, tb.Rows[i], w)
+		}
 	}
 }

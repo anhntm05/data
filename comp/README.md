@@ -29,6 +29,7 @@ Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 - Ngày quy về yyyy-mm-dd hoặc yyyy-mm-dd hh:mm:ss (nhận: 2026-10-26, 2026/10/26, 26/10/2026, 26-OCT-26, có giờ, AM/PM). 00:00:00 coi như chỉ có ngày.
 - Note từ reference chỉ lấy cho dòng khác biệt hoặc chỉ có ở 1 bên (dòng khớp hoàn toàn không có note). Dòng header của reference được tự tìm (dòng có nhiều cột key nhất). Nếu sheet reference thiếu một số cột key, tool cảnh báo và khớp note theo các cột còn lại.
 - Cột chỉ có ở một bên không được so sánh.
+- File xlsx: đọc giá trị gốc trong ô, nên số lớn giữ đủ chữ số thập phân dù Excel đang hiện làm tròn. Ô có định dạng ngày được đổi về yyyy-mm-dd (có giờ thì thêm hh:mm:ss).
 
 ## File kết quả (.xlsx, 3 tab)
 - **Tổng hợp**: tên 2 file, tổng số dòng mỗi file, số key chỉ có ở file 1, chỉ có ở file 2, khớp hoàn toàn, khác nhau 1 cột, khác nhau nhiều cột.
