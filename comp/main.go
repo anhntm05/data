@@ -16,7 +16,7 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-const version = "1.0.1"
+const version = "1.0.2"
 
 var (
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).
@@ -49,7 +49,7 @@ func box(st lipgloss.Style, s string) string {
 
 func main() {
 	fmt.Println()
-	fmt.Println(titleStyle.Render("UAT vs PROD - So sánh dữ liệu CSV  v" + version))
+	fmt.Println(titleStyle.Render("comp - So sánh dữ liệu UAT vs PROD  v" + version))
 	fmt.Println(dimStyle.Render("Dùng ↑/↓ để chọn, Space để tick, Enter để xác nhận, / để tìm, Ctrl+C để thoát."))
 	fmt.Println()
 

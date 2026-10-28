@@ -3,9 +3,9 @@ name: build tools
 on:
   push:
     branches: [main]
-    paths: ["uatdiff/**", "insertgen/**", ".github/workflows/build-tools.yml"]
+    paths: ["comp/**", "insertgen/**", ".github/workflows/build-tools.yml"]
   pull_request:
-    paths: ["uatdiff/**", "insertgen/**", ".github/workflows/build-tools.yml"]
+    paths: ["comp/**", "insertgen/**", ".github/workflows/build-tools.yml"]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        tool: [uatdiff, insertgen]
+        tool: [comp, insertgen]
     defaults:
       run:
         working-directory: ${{ matrix.tool }}
@@ -58,3 +58,5 @@ jobs:
             gh release create latest --title "Tools (bản mới nhất)" --notes "$notes" --target "$GITHUB_SHA"
           fi
           gh release upload latest dist/*.exe --clobber
+          # uatdiff was renamed to comp: drop the old exe so nobody downloads a stale build.
+          gh release delete-asset latest uatdiff.exe -y 2>/dev/null || true

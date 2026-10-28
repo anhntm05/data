@@ -1,11 +1,11 @@
-# uatdiff - So sánh dữ liệu UAT vs PROD
+# comp - So sánh dữ liệu UAT vs PROD
 
 Tool CLI (1 file .exe, không cần cài môi trường) so sánh 2 file CSV export từ UAT và PROD, xuất Excel/CSV có định dạng.
 
 ## Chạy
-- Cách 1: double-click `uatdiff.exe` (nên đặt exe cùng thư mục với các file CSV, tool sẽ liệt kê sẵn).
-- Cách 2: chọn 2 file CSV trong Explorer, kéo thả lên `uatdiff.exe` (tool hỏi file nào là UAT/PROD).
-- Cách 3: mở Windows Terminal / cmd, gõ `uatdiff.exe` hoặc `uatdiff.exe UAT.csv PROD.csv`.
+- Cách 1: double-click `comp.exe` (nên đặt exe cùng thư mục với các file CSV, tool sẽ liệt kê sẵn).
+- Cách 2: chọn 2 file CSV trong Explorer, kéo thả lên `comp.exe` (tool hỏi file nào là UAT/PROD).
+- Cách 3: mở Windows Terminal / cmd, gõ `comp.exe` hoặc `comp.exe UAT.csv PROD.csv`.
 
 Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 
@@ -38,6 +38,6 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 ## Build lại từ source (máy có Go)
 ```
 go test ./...
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o uatdiff.exe .
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o comp.exe .
 ```
-Trên Windows (PowerShell): `$env:GOOS="windows"; go build -ldflags "-s -w" -o uatdiff.exe .`
+Trên Windows (PowerShell): `$env:GOOS="windows"; go build -ldflags "-s -w" -o comp.exe .`
