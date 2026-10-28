@@ -80,12 +80,13 @@ func (res *Result) fieldsTable(note *NoteMap) table {
 		}
 		diffs := append([]FieldDiff{}, r.Diffs...)
 		sort.SliceStable(diffs, func(a, b int) bool { return diffs[a].Field < diffs[b].Field })
-		n, _ := note.Lookup(r.Keys, res.Opts.Order)
 		for _, d := range diffs {
 			vals := make([]string, 0, len(t.header))
 			vals = append(vals, r.Keys...)
 			vals = append(vals, d.Field, showEmpty(d.V1), showEmpty(d.V2))
 			if note != nil {
+				// The note map for this tab matches on the keys plus tên trường.
+				n, _ := note.Lookup(append(append([]string{}, r.Keys...), d.Field), res.Opts.Order)
 				vals = append(vals, n)
 			}
 			t.rows = append(t.rows, vals)

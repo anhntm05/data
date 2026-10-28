@@ -29,10 +29,10 @@ func session(args []string) error {
 			uatPath, prodPath = prodPath, uatPath
 		}
 	} else {
-		if uatPath, err = pickFile("Chọn file UAT (.csv / .xlsx)", []string{".csv", ".xlsx"}, "", "uat"); err != nil {
+		if uatPath, err = pickFile("Chọn file UAT (.csv / .xlsx)", []string{".csv", ".xlsx"}, "", "uat", false); err != nil {
 			return err
 		}
-		if prodPath, err = pickFile("Chọn file PROD (.csv / .xlsx)", []string{".csv", ".xlsx"}, uatPath, "prod"); err != nil {
+		if prodPath, err = pickFile("Chọn file PROD (.csv / .xlsx)", []string{".csv", ".xlsx"}, uatPath, "prod", false); err != nil {
 			return err
 		}
 	}
@@ -63,32 +63,41 @@ func session(args []string) error {
 		}
 	}
 
-	// Key selection, repeated while the user wants to fix duplicates.
-	var nonKeys []string
+	// Key and column selection, repeated while the user wants to fix
+	// duplicates or goes back from the column step to change the keys.
 	for {
 		if opts.Keys, err = pickKeys(cc.Common, opts.Keys); err != nil {
 			return err
 		}
-		nonKeys = without(cc.Common, opts.Keys)
+		nonKeys := without(cc.Common, opts.Keys)
 		retry, err := checkDuplicates(uat, prod, opts, nonKeys)
 		if err != nil {
 			return err
 		}
-		if !retry {
-			break
+		if retry {
+			continue
 		}
-	}
-
-	opts.Compare = nonKeys
-	if len(nonKeys) > 0 {
-		if err := ask(huh.NewMultiSelect[string]().
-			Title("Các cột sẽ được so sánh").
-			Description("Mặc định so sánh tất cả. Bỏ tick cột muốn bỏ qua (vd: updated_at).").
-			Options(huh.NewOptions(nonKeys...)...).
-			Value(&opts.Compare).Filterable(true).Height(min(len(nonKeys)+4, 16))); err != nil {
+		opts.Compare = nonKeys
+		next := "go"
+		var fields []huh.Field
+		if len(nonKeys) > 0 {
+			fields = append(fields, huh.NewMultiSelect[string]().
+				Title("Các cột sẽ được so sánh").
+				Description("Mặc định so sánh tất cả. Bỏ tick cột muốn bỏ qua (vd: updated_at).").
+				Options(huh.NewOptions(nonKeys...)...).
+				Value(&opts.Compare).Filterable(true).Height(min(len(nonKeys)+4, 16)))
+		}
+		fields = append(fields, huh.NewSelect[string]().Title("Tiếp theo").Options(
+			huh.NewOption("Tiếp tục", "go"),
+			huh.NewOption("← Quay lại chọn key", "back")).Value(&next))
+		if err := ask(fields...); err != nil {
 			return err
 		}
+		if next == "back" {
+			continue
+		}
 		opts.Compare = keepOrder(nonKeys, opts.Compare)
+		break
 	}
 
 	refPath, notes, err := pickRefs(opts.Keys, opts.Order)
@@ -139,6 +148,18 @@ func loadInput(path, who string) (*Table, error) {
 // notes, which of its sheets and columns to read. It returns the reference
 // path and the note map per tab.
 func pickRefs(keys []string, order DateOrder) (string, map[string]*NoteMap, error) {
+	for {
+		p, notes, err := pickRefOnce(keys, order)
+		if errors.Is(err, errBack) {
+			continue
+		}
+		return p, notes, err
+	}
+}
+
+// pickRefOnce asks whether to use a reference, then for the file. It
+// returns errBack when the user goes back from the file step.
+func pickRefOnce(keys []string, order DateOrder) (string, map[string]*NoteMap, error) {
 	use := false
 	if err := ask(huh.NewConfirm().Title("Dùng file reference để lấy note?").
 		Description("File reference (.xlsx hoặc .csv) có cột key và cột note.\nCó thể lấy note cho tab records và tab field_mismatch.").
@@ -146,7 +167,7 @@ func pickRefs(keys []string, order DateOrder) (string, map[string]*NoteMap, erro
 		return "", nil, err
 	}
 	for {
-		p, err := pickFile("Chọn file reference (.xlsx / .csv)", []string{".xlsx", ".csv"}, "", "sosanh")
+		p, err := pickFile("Chọn file reference (.xlsx / .csv)", []string{".xlsx", ".csv"}, "", "sosanh", true)
 		if err != nil {
 			return "", nil, err
 		}
@@ -213,7 +234,12 @@ func pickTabNotes(path string, names []string, tab string, keys []string, order 
 	if err != nil {
 		return nil, err
 	}
-	hi, hdr, err := FindHeader(rows, keys)
+	// field_mismatch has several lines per key, so match the field name too.
+	match := keys
+	if tab == sheetFields {
+		match = append(append([]string{}, keys...), colField)
+	}
+	hi, hdr, err := FindHeader(rows, match)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +267,7 @@ func pickTabNotes(path string, names []string, tab string, keys []string, order 
 	); err != nil {
 		return nil, err
 	}
-	nm, err := BuildNoteMap(rows, hi, source, strings.TrimSpace(target), keys, order)
+	nm, err := BuildNoteMap(rows, hi, source, strings.TrimSpace(target), match, order)
 	if err != nil {
 		return nil, err
 	}

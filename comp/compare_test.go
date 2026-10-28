@@ -184,3 +184,29 @@ func TestReadXLSXInput(t *testing.T) {
 		}
 	}
 }
+
+func TestFieldNotesMatchFieldName(t *testing.T) {
+	dir := t.TempDir()
+	ref := write(t, dir, "ref.csv", "gd_id,tên trường,giá trị file 1,giá trị file 2,IT Feedback\n"+
+		"30,amount,1,2,dữ liệu sửa\n30,cust_name,A,***MASKED***,dữ liệu mask\n")
+	rows, _ := ReadSheetRows(ref, "")
+	match := []string{"gd_id", colField}
+	hi, _, err := FindHeader(rows, match)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nm, err := BuildNoteMap(rows, hi, "IT Feedback", "IT Feedback", match, DMY)
+	if err != nil || len(nm.Missing) != 0 {
+		t.Fatal(err, nm)
+	}
+	res := &Result{Opts: Options{Keys: []string{"gd_id"}}, Rows: []ResultRow{{Status: StatusDiff, Keys: []string{"30"},
+		Diffs: []FieldDiff{{Field: "cust_name", V1: "A", V2: "***MASKED***"}, {Field: "amount", V1: "1", V2: "2"}}}}}
+	tb := res.fieldsTable(nm)
+	got := map[string]string{}
+	for _, r := range tb.rows {
+		got[r[1]] = r[len(r)-1]
+	}
+	if got["amount"] != "dữ liệu sửa" || got["cust_name"] != "dữ liệu mask" {
+		t.Fatal(got)
+	}
+}

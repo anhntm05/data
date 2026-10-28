@@ -18,8 +18,8 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 2. Nếu có ngày dạng 03/04/2026 → chọn dd/mm hay mm/dd.
 3. Chọn cột key (1 hoặc nhiều), sắp lại thứ tự key nếu cần.
 4. Nếu key trùng trong 1 file → hiện cột khác nhau giữa các dòng trùng, gợi ý thêm key; hoặc tiếp tục (ghép theo thứ tự xuất hiện).
-5. Chọn cột so sánh (mặc định tất cả, bỏ tick cột muốn bỏ qua).
-6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output.
+5. Chọn cột so sánh (mặc định tất cả, bỏ tick cột muốn bỏ qua). Chọn "← Quay lại chọn key" nếu muốn đổi key.
+6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output. Ở bước chọn file, chọn "← Quay lại" hoặc để trống ô đường dẫn rồi Enter để trở về câu hỏi có dùng reference không.
 7. Chọn đường dẫn lưu file xlsx (mặc định nằm cạnh file UAT, tên `comp_<UAT>_vs_<PROD>.xlsx`) → xác nhận → chạy.
 Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 
@@ -29,6 +29,7 @@ Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 - Ngày quy về yyyy-mm-dd hoặc yyyy-mm-dd hh:mm:ss (nhận: 2026-10-26, 2026/10/26, 26/10/2026, 26-OCT-26, có giờ, AM/PM). 00:00:00 coi như chỉ có ngày.
 - Note từ reference chỉ lấy cho dòng khác biệt hoặc chỉ có ở 1 bên (dòng khớp hoàn toàn không có note). Dòng header của reference được tự tìm (dòng có nhiều cột key nhất). Nếu sheet reference thiếu một số cột key, tool cảnh báo và khớp note theo các cột còn lại.
 - Cột chỉ có ở một bên không được so sánh.
+- Tab field_mismatch khớp note theo key và `tên trường` (nếu sheet reference có cột này), nên mỗi trường lệch của cùng một key nhận đúng note của nó.
 - File xlsx: đọc giá trị gốc trong ô, nên số lớn giữ đủ chữ số thập phân dù Excel đang hiện làm tròn. Ô có định dạng ngày được đổi về yyyy-mm-dd (có giờ thì thêm hh:mm:ss).
 
 ## File kết quả (.xlsx, 3 tab)

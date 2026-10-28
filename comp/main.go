@@ -32,6 +32,9 @@ var (
 
 var errAbort = errors.New("aborted")
 
+// errBack means the user asked to go back to the previous question.
+var errBack = errors.New("back")
+
 // box renders a bordered panel that wraps instead of overflowing the
 // terminal, so long messages stay inside the frame.
 func box(st lipgloss.Style, s string) string {
@@ -47,7 +50,7 @@ func box(st lipgloss.Style, s string) string {
 
 func main() {
 	fmt.Println()
-	fmt.Println(titleStyle.Render("comp - So sánh dữ liệu UAT vs PROD  v" + version))
+	fmt.Println(titleStyle.Render("comp - So sánh dữ liệu  v" + version))
 	fmt.Println(dimStyle.Render("Dùng ↑/↓ để chọn, Space để tick, Enter để xác nhận, / để tìm, Ctrl+C để thoát."))
 	fmt.Println()
 
@@ -82,8 +85,9 @@ func ask(fields ...huh.Field) error {
 // pickFile offers recent files from the working folder, typing or
 // dragging a path into the terminal, or browsing folders.
 // hint moves the cursor to the first file whose name contains it.
-func pickFile(title string, exts []string, near, hint string) (string, error) {
-	const typed, browse = "\x00typed", "\x00browse"
+// With canBack, the user can return errBack to go to the previous question.
+func pickFile(title string, exts []string, near, hint string, canBack bool) (string, error) {
+	const typed, browse, back = "\x00typed", "\x00browse", "\x00back"
 	dirs := []string{"."}
 	if near != "" {
 		dirs = append([]string{filepath.Dir(near)}, dirs...)
@@ -99,6 +103,9 @@ func pickFile(title string, exts []string, near, hint string) (string, error) {
 	opts = append(opts,
 		huh.NewOption("✎ Nhập hoặc kéo thả đường dẫn file vào đây", typed),
 		huh.NewOption("▸ Duyệt thư mục...", browse))
+	if canBack {
+		opts = append(opts, huh.NewOption("← Quay lại", back))
+	}
 	choice := opts[0].Value
 	for _, o := range opts {
 		if strings.Contains(strings.ToLower(filepath.Base(o.Value)), hint) {
@@ -106,19 +113,28 @@ func pickFile(title string, exts []string, near, hint string) (string, error) {
 			break
 		}
 	}
-	if len(opts) > 2 {
+	if len(opts) > 2 || canBack {
 		if err := ask(huh.NewSelect[string]().Title(title).Options(opts...).Value(&choice).Height(min(len(opts)+3, 16))); err != nil {
 			return "", err
 		}
 	}
 	switch choice {
+	case back:
+		return "", errBack
 	case typed:
 		var p string
+		desc := "Kéo file từ Explorer thả vào cửa sổ này, hoặc dán đường dẫn, rồi Enter."
+		if canBack {
+			desc += "\nĐể trống rồi Enter để quay lại."
+		}
 		err := ask(huh.NewInput().Title(title).
-			Description("Kéo file từ Explorer thả vào cửa sổ này, hoặc dán đường dẫn, rồi Enter.").
+			Description(desc).
 			Value(&p).Validate(func(s string) error {
 			s = CleanPath(s)
 			if s == "" {
+				if canBack {
+					return nil
+				}
 				return errors.New("chưa nhập đường dẫn")
 			}
 			if st, err := os.Stat(s); err != nil || st.IsDir() {
@@ -126,6 +142,9 @@ func pickFile(title string, exts []string, near, hint string) (string, error) {
 			}
 			return nil
 		}))
+		if err == nil && canBack && CleanPath(p) == "" {
+			return "", errBack
+		}
 		return CleanPath(p), err
 	case browse:
 		var p string
