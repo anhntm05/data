@@ -35,9 +35,9 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 - CSV: UTF-8 BOM; giá trị có chữ số được ghi dạng ="..." để Excel mở ra vẫn là chuỗi.
 - File kết quả cũ dùng lại được làm reference cho lần sau.
 
-## Build lại từ source (máy có Go)
-```
-go test ./...
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o comp.exe .
-```
-Trên Windows (PowerShell): `$env:GOOS="windows"; go build -ldflags "-s -w" -o comp.exe .`
+## Build từ source (máy cá nhân có Go)
+Cài Go từ https://go.dev/dl, rồi trong thư mục `comp`:
+- Windows: double-click `build.bat`.
+- Mac/Linux: chạy `./build.sh`.
+
+Script chạy test rồi tạo `comp.exe` (Windows 64-bit) ngay trong thư mục này. Chép file exe sang máy công ty là dùng được.

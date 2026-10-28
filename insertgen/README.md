@@ -54,8 +54,9 @@ Repo này đang để **public**. Không commit DDL, CSV hay file SQL có dữ l
 ## Ví dụ
 Thư mục `sample/` có DDL Oracle (kiểu DBeaver export), DDL Athena (SHOW CREATE TABLE) và 1 CSV có cả dòng lỗi để thử.
 
-## Build lại từ source
-```
-go test ./...
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o insertgen.exe .
-```
+## Build từ source (máy cá nhân có Go)
+Cài Go từ https://go.dev/dl, rồi trong thư mục `insertgen`:
+- Windows: double-click `build.bat`.
+- Mac/Linux: chạy `./build.sh`.
+
+Script chạy test rồi tạo `insertgen.exe` (Windows 64-bit) ngay trong thư mục này. Chép file exe sang máy công ty là dùng được.

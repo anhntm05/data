@@ -7,7 +7,6 @@
 
 Cả hai là 1 file `.exe` cho Windows, không cần cài Go, Node hay Python.
 
-## Lấy bản mới nhất
-Double-click `update_tools.bat`: tải `comp.exe` và `insertgen.exe` mới nhất về cùng thư mục.
-Mỗi lần code trên `main` thay đổi, GitHub Actions tự test, build và cập nhật 2 file này ở release
-[latest](https://github.com/anhntm05/data/releases/tag/latest).
+## Build
+Mỗi tool tự build trong thư mục của nó: double-click `build.bat` (Windows) hoặc chạy `./build.sh` (Mac/Linux) trên máy có Go,
+rồi chép file `.exe` sang máy công ty. Xem phần "Build từ source" trong README của từng tool.
