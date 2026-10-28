@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -124,6 +126,13 @@ func session(args []string) error {
 		return fmt.Errorf("không ghi được file Excel: %w", err)
 	}
 	showResult(res, notes, out, time.Since(begin))
+
+	if runtime.GOOS == "windows" {
+		var open bool
+		if ask(huh.NewConfirm().Title("Mở file kết quả?").Affirmative("Mở").Negative("Không").Value(&open)) == nil && open {
+			exec.Command("cmd", "/c", "start", "", out).Start()
+		}
+	}
 	return nil
 }
 
