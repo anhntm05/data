@@ -1,11 +1,11 @@
-# comp - So sánh dữ liệu UAT vs PROD
+# comp - So sánh dữ liệu
 
-Tool CLI (1 file .exe, không cần cài môi trường) so sánh 2 file CSV hoặc Excel (.xlsx) export từ UAT và PROD, xuất file Excel có 3 tab.
+Tool CLI (1 file .exe, không cần cài môi trường) so sánh 2 file CSV hoặc Excel (.xlsx) (file 1 và file 2, ví dụ export từ UAT và PROD), xuất file Excel có 3 tab.
 
 ## Chạy
 - Cách 1: double-click `comp.exe` (nên đặt exe cùng thư mục với các file CSV, tool sẽ liệt kê sẵn).
-- Cách 2: chọn 2 file CSV trong Explorer, kéo thả lên `comp.exe` (tool hỏi file nào là UAT/PROD).
-- Cách 3: mở Windows Terminal / cmd, gõ `comp.exe` hoặc `comp.exe UAT.csv PROD.csv`.
+- Cách 2: chọn 2 file CSV trong Explorer, kéo thả lên `comp.exe` (tool hỏi file nào là file 1, file nào là file 2).
+- Cách 3: mở Windows Terminal / cmd, gõ `comp.exe` hoặc `comp.exe file1.csv file2.csv`.
 
 Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 
@@ -14,13 +14,13 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 Ô nhập đường dẫn: kéo file từ Explorer thả vào cửa sổ terminal.
 
 ## Luồng
-1. Chọn file UAT, PROD (.csv hoặc .xlsx). Nếu file xlsx có nhiều sheet thì chọn sheet. Tool hiện số dòng, cột chung, cảnh báo cột lệch tên (không được dùng).
+1. Chọn file 1, file 2 (.csv hoặc .xlsx). Nếu file xlsx có nhiều sheet thì chọn sheet. Tool hiện số dòng, cột chung, cảnh báo cột lệch tên (không được dùng).
 2. Nếu có ngày dạng 03/04/2026 → chọn dd/mm hay mm/dd.
 3. Chọn cột key (1 hoặc nhiều), sắp lại thứ tự key nếu cần.
 4. Nếu key trùng trong 1 file → hiện cột khác nhau giữa các dòng trùng, gợi ý thêm key; hoặc tiếp tục (ghép theo thứ tự xuất hiện).
 5. Chọn cột so sánh (mặc định tất cả, bỏ tick cột muốn bỏ qua). Bấm Esc để quay lại chọn key.
 6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output (mặc định trùng tên cột vừa chọn). Ở bước chọn file, bấm Esc (hoặc để trống ô đường dẫn rồi Enter) để trở về câu hỏi có dùng reference không.
-7. Chọn đường dẫn lưu file xlsx (mặc định nằm cạnh file UAT, tên `comp_<UAT>_vs_<PROD>.xlsx`) → xác nhận → chạy.
+7. Chọn đường dẫn lưu file xlsx (mặc định nằm cạnh file 1, tên `comp_<file 1>_vs_<file 2>.xlsx`) → xác nhận → chạy.
 Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 
 ## Quy tắc so sánh

@@ -248,8 +248,8 @@ func listFiles(dirs, exts []string) []string {
 
 func showFiles(uat, prod *Table, cc ColumnCheck) {
 	info := fmt.Sprintf("%s  %s\n%s  %s\n%s  %d cột",
-		boldStyle.Render("UAT :"), fmt.Sprintf("%s  (%d dòng, %d cột)", uat.Name(), len(uat.Rows), len(uat.Headers)),
-		boldStyle.Render("PROD:"), fmt.Sprintf("%s  (%d dòng, %d cột)", prod.Name(), len(prod.Rows), len(prod.Headers)),
+		boldStyle.Render("File 1:"), fmt.Sprintf("%s  (%d dòng, %d cột)", uat.Name(), len(uat.Rows), len(uat.Headers)),
+		boldStyle.Render("File 2:"), fmt.Sprintf("%s  (%d dòng, %d cột)", prod.Name(), len(prod.Rows), len(prod.Headers)),
 		boldStyle.Render("Cột chung:"), len(cc.Common))
 	info += "\n" + dimStyle.Render(wrapList(cc.Common, 90))
 	fmt.Println(box(boxStyle, info))
@@ -257,10 +257,10 @@ func showFiles(uat, prod *Table, cc ColumnCheck) {
 		var b strings.Builder
 		b.WriteString(boldStyle.Render("⚠ Có cột không trùng tên giữa 2 file. Các cột này sẽ KHÔNG được dùng để so sánh hoặc làm key:"))
 		if len(cc.OnlyUAT) > 0 {
-			b.WriteString("\n  Chỉ có ở UAT : " + strings.Join(cc.OnlyUAT, ", "))
+			b.WriteString("\n  Chỉ có ở file 1: " + strings.Join(cc.OnlyUAT, ", "))
 		}
 		if len(cc.OnlyProd) > 0 {
-			b.WriteString("\n  Chỉ có ở PROD: " + strings.Join(cc.OnlyProd, ", "))
+			b.WriteString("\n  Chỉ có ở file 2: " + strings.Join(cc.OnlyProd, ", "))
 		}
 		fmt.Println(box(warnStyle, b.String()))
 	}

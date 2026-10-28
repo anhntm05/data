@@ -23,7 +23,7 @@ func session(args []string) error {
 		correct := true
 		if err := ask(huh.NewConfirm().
 			Title("Đã nhận 2 file").
-			Description(fmt.Sprintf("UAT  = %s\nPROD = %s", filepath.Base(uatPath), filepath.Base(prodPath))).
+			Description(fmt.Sprintf("file 1 = %s\nfile 2 = %s", filepath.Base(uatPath), filepath.Base(prodPath))).
 			Affirmative("Đúng").Negative("Đảo lại").Value(&correct)); err != nil {
 			return err
 		}
@@ -31,19 +31,19 @@ func session(args []string) error {
 			uatPath, prodPath = prodPath, uatPath
 		}
 	} else {
-		if uatPath, err = pickFile("Chọn file UAT (.csv / .xlsx)", []string{".csv", ".xlsx"}, "", "uat", false); err != nil {
+		if uatPath, err = pickFile("Chọn file 1 (.csv / .xlsx)", []string{".csv", ".xlsx"}, "", "uat", false); err != nil {
 			return err
 		}
-		if prodPath, err = pickFile("Chọn file PROD (.csv / .xlsx)", []string{".csv", ".xlsx"}, uatPath, "prod", false); err != nil {
+		if prodPath, err = pickFile("Chọn file 2 (.csv / .xlsx)", []string{".csv", ".xlsx"}, uatPath, "prod", false); err != nil {
 			return err
 		}
 	}
 
-	uat, err := loadInput(uatPath, "UAT")
+	uat, err := loadInput(uatPath, "1")
 	if err != nil {
 		return err
 	}
-	prod, err := loadInput(prodPath, "PROD")
+	prod, err := loadInput(prodPath, "2")
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func pickTabNotes(path string, names []string, tab string, keys []string, order 
 }
 
 // pickOutput asks where to save the xlsx result. The default is next to
-// the UAT file.
+// file 1.
 func pickOutput(uat, prod *Table) (string, error) {
 	base := func(t *Table) string { return strings.TrimSuffix(t.Name(), filepath.Ext(t.Name())) }
 	out := filepath.Join(filepath.Dir(uat.Path), fmt.Sprintf("comp_%s_vs_%s.xlsx", base(uat), base(prod)))
@@ -313,8 +313,8 @@ func showPlan(uat, prod *Table, o Options, ref string, notes map[string]*NoteMap
 	}
 	lines := []string{
 		boldStyle.Render("Xác nhận"),
-		"UAT        : " + uat.Name() + sheetSuffix(uat),
-		"PROD       : " + prod.Name() + sheetSuffix(prod),
+		"File 1     : " + uat.Name() + sheetSuffix(uat),
+		"File 2     : " + prod.Name() + sheetSuffix(prod),
 		"Key        : " + strings.Join(o.Keys, ", "),
 		fmt.Sprintf("So sánh    : %d cột", len(o.Compare)),
 		"Ngày 03/04 : hiểu là " + order,
