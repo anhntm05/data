@@ -19,7 +19,7 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 3. Chọn cột key (1 hoặc nhiều), sắp lại thứ tự key nếu cần.
 4. Nếu key trùng trong 1 file → hiện cột khác nhau giữa các dòng trùng, gợi ý thêm key; hoặc tiếp tục (ghép theo thứ tự xuất hiện).
 5. Chọn cột so sánh (mặc định tất cả, bỏ tick cột muốn bỏ qua). Bấm Esc để quay lại chọn key.
-6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output. Ở bước chọn file, bấm Esc (hoặc để trống ô đường dẫn rồi Enter) để trở về câu hỏi có dùng reference không.
+6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output (mặc định trùng tên cột vừa chọn). Ở bước chọn file, bấm Esc (hoặc để trống ô đường dẫn rồi Enter) để trở về câu hỏi có dùng reference không.
 7. Chọn đường dẫn lưu file xlsx (mặc định nằm cạnh file UAT, tên `comp_<UAT>_vs_<PROD>.xlsx`) → xác nhận → chạy.
 Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 

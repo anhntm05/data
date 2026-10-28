@@ -257,10 +257,13 @@ func pickTabNotes(path string, names []string, tab string, keys []string, order 
 			}
 		}
 	}
-	target := "note"
+	if err := ask(huh.NewSelect[string]().Title(fmt.Sprintf("Tab %q: lấy note từ cột nào của sheet %q?", tab, sheet)).
+		Options(sourceOpts...).Value(&source)); err != nil {
+		return nil, err
+	}
+	// The output column defaults to the name of the chosen source column.
+	target := source
 	if err := ask(
-		huh.NewSelect[string]().Title(fmt.Sprintf("Tab %q: lấy note từ cột nào của sheet %q?", tab, sheet)).
-			Options(sourceOpts...).Value(&source),
 		huh.NewInput().Title(fmt.Sprintf("Tab %q: note sẽ ghi vào cột tên là", tab)).
 			Value(&target).Validate(func(s string) error {
 			if strings.TrimSpace(s) == "" {
