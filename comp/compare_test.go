@@ -65,69 +65,83 @@ func TestCompareFlow(t *testing.T) {
 	if d.DupKeys != 1 || d.DiffCols["amount"] != 1 || d.DiffCols["status"] != 1 {
 		t.Fatalf("%+v", d)
 	}
-	o := Options{Keys: keys, Compare: nonKeys, Order: DMY, EnvOrder: envOrders[0],
-		Sort: []SortSpec{{Field: "environment"}, {Field: "note", Desc: true}}}
-	res := Compare(uat, prod, o)
-	if res.OnlyUAT != 2 || res.OnlyProd != 1 || res.Matched != 3 || res.MatchedDiff != 1 {
+	res := Compare(uat, prod, Options{Keys: keys, Compare: nonKeys, Order: DMY})
+	if res.Only1 != 2 || res.Only2 != 1 || res.Matched != 3 || res.MatchedDiff != 1 || res.DiffMany != 1 {
 		t.Fatalf("%+v", res)
+	}
+	var statuses []int
+	for _, r := range res.Rows {
+		statuses = append(statuses, r.Status)
+		if r.Status == StatusDiff && (len(r.Diffs) != 2 || r.Diffs[0].V2 != "250") {
+			t.Errorf("%+v", r.Diffs)
+		}
+	}
+	if statuses[0] != StatusOnly1 || statuses[len(statuses)-1] != StatusDiff {
+		t.Error(statuses)
 	}
 
 	// reference file in the CSV output layout, with ="..." wrapped keys
 	ref := write(t, dir, "ref.csv", "So sanh\n\nid,branch,environment,note\n"+
 		"=\"2\",HN,x,data mask\n=\"1\",HN,x,should not apply\n=\"5\",DN,x,fake test AA-1\n")
-	rn, err := LoadRefNotes(ref, keys, DMY)
+	rows, err := ReadSheetRows(ref, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.ApplyNotes(rn)
-	if res.NotesFilled != 2 {
-		t.Fatalf("notes %d", res.NotesFilled)
-	}
-	res.SortRows()
-	var envs []int
-	for _, r := range res.Rows {
-		envs = append(envs, r.Env)
-		if r.Keys[0] == "2" && r.Diff != "amount: UAT=200, PROD=250; status: UAT=Lỗi, PROD=lỗi" {
-			t.Error(r.Diff)
-		}
-		if r.Keys[0] == "1" && r.Note != "" {
-			t.Error("identical row must not take a note")
-		}
-	}
-	if envs[0] != EnvOnlyProd || envs[len(envs)-1] != EnvBoth {
-		t.Error(envs)
-	}
-	if err := res.WriteXLSX(filepath.Join(dir, "out.xlsx")); err != nil {
+	hi, _, err := FindHeader(rows, keys)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := res.WriteCSV(filepath.Join(dir, "out.csv")); err != nil {
+	nm, err := BuildNoteMap(rows, hi, "note", "note", keys, DMY)
+	if err != nil {
 		t.Fatal(err)
 	}
-	// the xlsx output must work as a reference file too
-	rn2, err := LoadRefNotes(filepath.Join(dir, "out.xlsx"), keys, DMY)
-	if err != nil || len(rn2.Notes) != 2 {
-		t.Fatal(err, rn2)
+	if n, ok := nm.Lookup([]string{"2", "HN"}, DMY); !ok || n != "data mask" {
+		t.Error(n, ok)
 	}
-	rn3, err := LoadRefNotes(filepath.Join(dir, "out.csv"), keys, DMY)
-	if err != nil || len(rn3.Notes) != 2 {
-		t.Fatal(err, rn3)
+	if _, ok := nm.Lookup([]string{"3", "HCM"}, DMY); ok {
+		t.Error("unexpected note")
+	}
+
+	out := filepath.Join(dir, "out.xlsx")
+	if err := res.WriteXLSX(out, map[string]*NoteMap{sheetRecords: nm, sheetFields: nm}); err != nil {
+		t.Fatal(err)
+	}
+	names, err := SheetNames(out)
+	if err != nil || strings.Join(names, "|") != "Tổng hợp|records|field_mismatch" {
+		t.Fatal(err, names)
+	}
+	recs, err := ReadSheetRows(out, sheetRecords)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 6 { // header + 5 rows (diff rows are not in records)
+		t.Fatalf("records rows %d", len(recs))
+	}
+	fields, _ := ReadSheetRows(out, sheetFields)
+	if len(fields) != 3 { // header + 2 field lines
+		t.Fatalf("field rows %d", len(fields))
 	}
 }
 
 func TestRefNotesSubsetOfKeys(t *testing.T) {
 	dir := t.TempDir()
 	ref := write(t, dir, "ref.csv", "title\nid,environment,note\n1,x,mask\n")
-	rn, err := LoadRefNotes(ref, []string{"id", "branch"}, DMY)
+	rows, err := ReadSheetRows(ref, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rn.Missing) != 1 || rn.Missing[0] != "branch" || len(rn.KeyPos) != 1 {
-		t.Fatalf("%+v", rn)
+	hi, _, err := FindHeader(rows, []string{"id", "branch"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	res := &Result{Opts: Options{Keys: []string{"id", "branch"}},
-		Rows: []ResultRow{{Env: EnvOnlyUAT, Keys: []string{"1", "HN"}}, {Env: EnvBoth, Keys: []string{"1", "HCM"}}}}
-	res.ApplyNotes(rn)
-	if res.Rows[0].Note != "mask" || res.Rows[1].Note != "" || res.NotesFilled != 1 {
-		t.Fatalf("%+v", res.Rows)
+	nm, err := BuildNoteMap(rows, hi, "note", "note", []string{"id", "branch"}, DMY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nm.Missing) != 1 || nm.Missing[0] != "branch" || len(nm.KeyPos) != 1 {
+		t.Fatalf("%+v", nm)
+	}
+	if n, ok := nm.Lookup([]string{"1", "HN"}, DMY); !ok || n != "mask" {
+		t.Fatalf("%q %v", n, ok)
 	}
 }

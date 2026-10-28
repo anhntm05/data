@@ -16,6 +16,7 @@ import (
 // Table is a file loaded into memory: a header row and data rows.
 type Table struct {
 	Path    string
+	Sheet   string // xlsx sheet name, empty for CSV
 	Headers []string
 	Rows    [][]string
 }
@@ -37,14 +38,19 @@ func CleanPath(p string) string {
 // ReadCSV reads a UTF-8 CSV (BOM optional). The delimiter is detected from
 // the first line among comma, semicolon, tab and pipe.
 func ReadCSV(path string) (*Table, error) {
-	rows, err := readCSVRows(path)
+	return LoadTable(path, "")
+}
+
+// LoadTable reads one table: a CSV file, or one sheet of an xlsx file.
+func LoadTable(path, sheet string) (*Table, error) {
+	rows, err := ReadSheetRows(path, sheet)
 	if err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("file %s trống", filepath.Base(path))
 	}
-	t := &Table{Path: path}
+	t := &Table{Path: path, Sheet: sheet}
 	for _, h := range rows[0] {
 		t.Headers = append(t.Headers, strings.TrimSpace(h))
 	}
@@ -115,22 +121,42 @@ func isBlankRow(r []string) bool {
 
 // ReadAnyRows reads all rows of a CSV or the first sheet of an .xlsx,
 // without assuming where the header is (used for reference files).
-func ReadAnyRows(path string) ([][]string, error) {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".xlsx", ".xlsm":
-		f, err := excelize.OpenFile(path)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		sheets := f.GetSheetList()
-		if len(sheets) == 0 {
-			return nil, fmt.Errorf("file %s không có sheet nào", filepath.Base(path))
-		}
-		return f.GetRows(sheets[0], excelize.Options{RawCellValue: true})
-	default:
+// SheetNames lists the sheets of an xlsx file. A CSV has one table, named
+// after the file.
+func SheetNames(path string) ([]string, error) {
+	if !isXLSX(path) {
+		return []string{filepath.Base(path)}, nil
+	}
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	names := f.GetSheetList()
+	if len(names) == 0 {
+		return nil, fmt.Errorf("file %s không có sheet nào", filepath.Base(path))
+	}
+	return names, nil
+}
+
+func isXLSX(path string) bool {
+	e := strings.ToLower(filepath.Ext(path))
+	return e == ".xlsx" || e == ".xlsm"
+}
+
+// ReadSheetRows returns the cells of one sheet, or of a CSV file (sheet is
+// ignored). Excel cells are read as displayed, so dates and numbers keep the
+// format the user sees.
+func ReadSheetRows(path, sheet string) ([][]string, error) {
+	if !isXLSX(path) {
 		return readCSVRows(path)
 	}
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.GetRows(sheet)
 }
 
 // unwrapExcelText undoes the ="..." wrapping written to CSV output.
