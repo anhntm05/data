@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-const version = "1.0.2"
+const version = "2.0.0"
 
 var (
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).
