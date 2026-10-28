@@ -3,9 +3,8 @@
 | Tool | Làm gì | Hướng dẫn |
 |---|---|---|
 | `comp` (trước đây là `uatdiff`) | So sánh 2 file CSV UAT và PROD theo key, xuất Excel/CSV có tô màu, lấy note từ file reference | [comp/README.md](comp/README.md) |
-| `insertgen` | Sinh câu lệnh INSERT từ DDL + CSV cho Oracle (DBeaver) hoặc Athena | [insertgen/README.md](insertgen/README.md) |
 
-Cả hai là 1 file `.exe` cho Windows, không cần cài Go, Node hay Python.
+Tool là 1 file `.exe` cho Windows, không cần cài Go, Node hay Python.
 
 ## Build
 Mỗi tool tự build trong thư mục của nó: double-click `build.bat` (Windows) hoặc chạy `./build.sh` (Mac/Linux) trên máy có Go,
