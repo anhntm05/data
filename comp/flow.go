@@ -80,23 +80,18 @@ func session(args []string) error {
 			continue
 		}
 		opts.Compare = nonKeys
-		next := "go"
-		var fields []huh.Field
 		if len(nonKeys) > 0 {
-			fields = append(fields, huh.NewMultiSelect[string]().
+			err := askBack(huh.NewMultiSelect[string]().
 				Title("Các cột sẽ được so sánh").
-				Description("Mặc định so sánh tất cả. Bỏ tick cột muốn bỏ qua (vd: updated_at).").
+				Description("Mặc định so sánh tất cả. Bỏ tick cột muốn bỏ qua (vd: updated_at).\nEsc: quay lại chọn key.").
 				Options(huh.NewOptions(nonKeys...)...).
 				Value(&opts.Compare).Filterable(true).Height(min(len(nonKeys)+4, 16)))
-		}
-		fields = append(fields, huh.NewSelect[string]().Title("Tiếp theo").Options(
-			huh.NewOption("Tiếp tục", "go"),
-			huh.NewOption("← Quay lại chọn key", "back")).Value(&next))
-		if err := ask(fields...); err != nil {
-			return err
-		}
-		if next == "back" {
-			continue
+			if errors.Is(err, errBack) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
 		}
 		opts.Compare = keepOrder(nonKeys, opts.Compare)
 		break

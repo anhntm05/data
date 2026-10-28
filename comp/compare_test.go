@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -208,5 +210,30 @@ func TestFieldNotesMatchFieldName(t *testing.T) {
 	}
 	if got["amount"] != "dữ liệu sửa" || got["cust_name"] != "dữ liệu mask" {
 		t.Fatal(got)
+	}
+}
+
+func TestBackFormEsc(t *testing.T) {
+	var picked []string
+	newForm := func() *backForm {
+		f := huh.NewForm(huh.NewGroup(huh.NewMultiSelect[string]().
+			Options(huh.NewOptions("a", "b")...).Value(&picked).Filterable(true)))
+		f.Init()
+		return &backForm{form: f}
+	}
+	m := newForm()
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if !m.back {
+		t.Fatal("Esc should go back")
+	}
+	m = newForm()
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.back {
+		t.Fatal("Esc while filtering should only clear the filter")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if !m.back {
+		t.Fatal("second Esc should go back")
 	}
 }

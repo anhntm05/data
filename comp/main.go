@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
@@ -82,12 +83,71 @@ func ask(fields ...huh.Field) error {
 	return err
 }
 
+// askBack is ask with one more key: Esc returns errBack so the caller can
+// go to the previous question. Esc still clears a "/" filter first.
+func askBack(fields ...huh.Field) error {
+	form := huh.NewForm(huh.NewGroup(fields...)).WithTheme(theme)
+	form.SubmitCmd = tea.Quit
+	form.CancelCmd = tea.Interrupt
+	m := &backForm{form: form}
+	_, err := tea.NewProgram(m).Run()
+	switch {
+	case m.back:
+		return errBack
+	case errors.Is(err, tea.ErrInterrupted) || form.State == huh.StateAborted:
+		return errAbort
+	}
+	return err
+}
+
+type backForm struct {
+	form      *huh.Form
+	back      bool
+	filtering bool
+}
+
+func (m *backForm) Init() tea.Cmd { return m.form.Init() }
+
+func (m *backForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyMsg); ok {
+		switch k.String() {
+		case "/":
+			m.filtering = true
+		case "enter":
+			m.filtering = false
+		case "esc":
+			if !m.filtering {
+				m.back = true
+				return m, tea.Quit
+			}
+			m.filtering = false
+		}
+	}
+	f, cmd := m.form.Update(msg)
+	if ff, ok := f.(*huh.Form); ok {
+		m.form = ff
+	}
+	return m, cmd
+}
+
+func (m *backForm) View() string {
+	if m.back {
+		return ""
+	}
+	return m.form.View()
+}
+
 // pickFile offers recent files from the working folder, typing or
 // dragging a path into the terminal, or browsing folders.
 // hint moves the cursor to the first file whose name contains it.
 // With canBack, the user can return errBack to go to the previous question.
 func pickFile(title string, exts []string, near, hint string, canBack bool) (string, error) {
-	const typed, browse, back = "\x00typed", "\x00browse", "\x00back"
+	const typed, browse = "\x00typed", "\x00browse"
+	askFn := ask
+	if canBack {
+		askFn = askBack
+		title += dimStyle.Render("  (Esc: quay lại)")
+	}
 	dirs := []string{"."}
 	if near != "" {
 		dirs = append([]string{filepath.Dir(near)}, dirs...)
@@ -103,9 +163,6 @@ func pickFile(title string, exts []string, near, hint string, canBack bool) (str
 	opts = append(opts,
 		huh.NewOption("✎ Nhập hoặc kéo thả đường dẫn file vào đây", typed),
 		huh.NewOption("▸ Duyệt thư mục...", browse))
-	if canBack {
-		opts = append(opts, huh.NewOption("← Quay lại", back))
-	}
 	choice := opts[0].Value
 	for _, o := range opts {
 		if strings.Contains(strings.ToLower(filepath.Base(o.Value)), hint) {
@@ -114,20 +171,18 @@ func pickFile(title string, exts []string, near, hint string, canBack bool) (str
 		}
 	}
 	if len(opts) > 2 || canBack {
-		if err := ask(huh.NewSelect[string]().Title(title).Options(opts...).Value(&choice).Height(min(len(opts)+3, 16))); err != nil {
+		if err := askFn(huh.NewSelect[string]().Title(title).Options(opts...).Value(&choice).Height(min(len(opts)+3, 16))); err != nil {
 			return "", err
 		}
 	}
 	switch choice {
-	case back:
-		return "", errBack
 	case typed:
 		var p string
 		desc := "Kéo file từ Explorer thả vào cửa sổ này, hoặc dán đường dẫn, rồi Enter."
 		if canBack {
 			desc += "\nĐể trống rồi Enter để quay lại."
 		}
-		err := ask(huh.NewInput().Title(title).
+		err := askFn(huh.NewInput().Title(title).
 			Description(desc).
 			Value(&p).Validate(func(s string) error {
 			s = CleanPath(s)
