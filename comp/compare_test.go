@@ -108,7 +108,7 @@ func TestCompareFlow(t *testing.T) {
 	}
 
 	out := filepath.Join(dir, "out.xlsx")
-	if err := res.WriteXLSX(out, map[string]*NoteMap{sheetRecords: nm, sheetFields: nm}); err != nil {
+	if err := res.WriteXLSX(out, map[string][]*NoteMap{sheetRecords: {nm}, sheetFields: {nm}}); err != nil {
 		t.Fatal(err)
 	}
 	names, err := SheetNames(out)
@@ -203,7 +203,7 @@ func TestFieldNotesMatchFieldName(t *testing.T) {
 	}
 	res := &Result{Opts: Options{Keys: []string{"gd_id"}}, Rows: []ResultRow{{Status: StatusDiff, Keys: []string{"30"},
 		Diffs: []FieldDiff{{Field: "cust_name", V1: "A", V2: "***MASKED***"}, {Field: "amount", V1: "1", V2: "2"}}}}}
-	tb := res.fieldsTable(nm)
+	tb := res.fieldsTable([]*NoteMap{nm})
 	got := map[string]string{}
 	for _, r := range tb.rows {
 		got[r[1]] = r[len(r)-1]
@@ -235,5 +235,53 @@ func TestBackFormEsc(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if !m.back {
 		t.Fatal("second Esc should go back")
+	}
+}
+
+func TestRecordNotesCoverMatchAndSeveralRefs(t *testing.T) {
+	order := DMY
+	res := &Result{Opts: Options{Keys: []string{"id"}, Order: order}, Common: []string{"x"},
+		Rows: []ResultRow{
+			{Status: StatusOnly1, Keys: []string{"1"}, Common: []string{"a"}},
+			{Status: StatusOnly2, Keys: []string{"2"}, Common: []string{"b"}},
+			{Status: StatusMatch, Keys: []string{"3"}, Common: []string{"c"}},
+		}}
+	mk := func(col string, vals map[string]string, apply ...int) *NoteMap {
+		nm := &NoteMap{Col: col, KeyPos: []int{0}, Values: map[string]string{}}
+		for k, v := range vals {
+			nm.Values[CompareKey(k, order)] = v
+		}
+		if len(apply) > 0 {
+			nm.Apply = map[int]bool{}
+			for _, s := range apply {
+				nm.Apply[s] = true
+			}
+		}
+		return nm
+	}
+	note := func(tb table) map[string]string {
+		got := map[string]string{}
+		for _, r := range tb.rows {
+			got[r[0]] = r[len(r)-1]
+		}
+		return got
+	}
+
+	// A single reference with no status filter now fills matching rows too.
+	got := note(res.recordsTable([]*NoteMap{mk("IT Feedback", map[string]string{"1": "n1", "2": "n2", "3": "n3"})}))
+	if got["1"] != "n1" || got["2"] != "n2" || got["3"] != "n3" {
+		t.Fatal(got)
+	}
+
+	// Two references: the first covers file-1-only rows, the second the rest.
+	first := mk("IT Feedback", map[string]string{"1": "from first", "3": "first must not fill a match"}, StatusOnly1)
+	second := mk("IT Feedback", map[string]string{"1": "second must not override", "2": "from second", "3": "from second"}, StatusOnly2, StatusMatch)
+	tb := res.recordsTable([]*NoteMap{first, second})
+	got = note(tb)
+	if got["1"] != "from first" || got["2"] != "from second" || got["3"] != "from second" {
+		t.Fatal(got)
+	}
+	if tb.header[len(tb.header)-1] != "IT Feedback" {
+		t.Fatal(tb.header)
 	}
 }

@@ -14,12 +14,13 @@ Nếu Windows SmartScreen cảnh báo: More info → Run anyway.
 Ô nhập đường dẫn: kéo file từ Explorer thả vào cửa sổ terminal.
 
 ## Luồng
+0. Chọn loại so sánh: "Dữ liệu UAT vs PROD" hoặc "Khác" (vd: 2 file phân tích khác biệt). Luồng "Khác" cho chọn file reference áp dụng cho dòng nào, xem bước 6.
 1. Chọn file 1, file 2 (.csv hoặc .xlsx). Nếu file xlsx có nhiều sheet thì chọn sheet. Tool hiện số dòng, cột chung, cảnh báo cột lệch tên (không được dùng).
 2. Nếu có ngày dạng 03/04/2026 → chọn dd/mm hay mm/dd.
 3. Chọn cột key (1 hoặc nhiều), sắp lại thứ tự key nếu cần.
 4. Nếu key trùng trong 1 file → hiện cột khác nhau giữa các dòng trùng, gợi ý thêm key; hoặc tiếp tục (ghép theo thứ tự xuất hiện).
 5. Chọn cột so sánh (mặc định tất cả, bỏ tick cột muốn bỏ qua). Bấm Esc để quay lại chọn key.
-6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output (mặc định trùng tên cột vừa chọn). Ở bước chọn file, bấm Esc (hoặc để trống ô đường dẫn rồi Enter) để trở về câu hỏi có dùng reference không.
+6. File reference (.xlsx/.csv) để lấy note theo key. Với mỗi tab `records` và `field_mismatch`: nếu file reference có sheet cùng tên thì tự dùng; nếu không thì chọn sheet. Sau đó chọn cột chứa note và tên cột sẽ ghi note vào output (mặc định trùng tên cột vừa chọn). Ở luồng "Khác", sau khi chọn sheet và cột cho tab `records`, chọn file reference đó áp dụng cho loại dòng nào (chỉ file 1, chỉ file 2, khớp hoàn toàn; mặc định cả 3). Nếu chưa chọn đủ cả 3, tool hỏi có chọn thêm file reference khác cho tab records không; mỗi file chỉ điền note cho loại dòng đã chọn, file chọn trước được ưu tiên, và tất cả ghi vào cùng một cột note (tên cột của file đầu). Ở bước chọn file, bấm Esc (hoặc để trống ô đường dẫn rồi Enter) để trở về câu hỏi có dùng reference không.
 7. Chọn đường dẫn lưu file xlsx (mặc định nằm cạnh file 1, tên `comp_<file 1>_vs_<file 2>.xlsx`) → xác nhận → chạy.
 Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 
@@ -27,7 +28,7 @@ Dòng luôn được sắp theo trạng thái, rồi theo cột key.
 - Bỏ khoảng trắng đầu/cuối; phân biệt hoa thường; NULL = rỗng = ô trống.
 - Số so sánh chính xác dạng thập phân: 1.0 = 1, 12435678654.04001 ≠ 12435678654.03001. Số có số 0 ở đầu (007) coi là chuỗi.
 - Ngày quy về yyyy-mm-dd hoặc yyyy-mm-dd hh:mm:ss (nhận: 2026-10-26, 2026/10/26, 26/10/2026, 26-OCT-26, có giờ, AM/PM). 00:00:00 coi như chỉ có ngày.
-- Note từ reference chỉ lấy cho dòng khác biệt hoặc chỉ có ở 1 bên (dòng khớp hoàn toàn không có note). Dòng header của reference được tự tìm (dòng có nhiều cột key nhất). Nếu sheet reference thiếu một số cột key, tool cảnh báo và khớp note theo các cột còn lại.
+- Note từ reference được lấy cho mọi dòng của tab records (chỉ file 1, chỉ file 2, khớp hoàn toàn) và mọi dòng của field_mismatch. Dòng header của reference được tự tìm (dòng có nhiều cột key nhất). Nếu sheet reference thiếu một số cột key, tool cảnh báo và khớp note theo các cột còn lại.
 - Cột chỉ có ở một bên không được so sánh.
 - Tab field_mismatch khớp note theo key và `tên trường` (nếu sheet reference có cột này), nên mỗi trường lệch của cùng một key nhận đúng note của nó.
 - File xlsx: đọc giá trị gốc trong ô, nên số lớn giữ đủ chữ số thập phân dù Excel đang hiện làm tròn. Ô có định dạng ngày được đổi về yyyy-mm-dd (có giờ thì thêm hh:mm:ss).

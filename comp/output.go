@@ -28,7 +28,7 @@ type table struct {
 
 // recordsTable builds the records tab: keys, status, common columns, then
 // file 1 only columns (_file1) and file 2 only columns (_file2), then note.
-func (res *Result) recordsTable(note *NoteMap) table {
+func (res *Result) recordsTable(notes []*NoteMap) table {
 	t := table{}
 	t.header = append(t.header, res.Opts.Keys...)
 	t.header = append(t.header, colStatus)
@@ -39,8 +39,8 @@ func (res *Result) recordsTable(note *NoteMap) table {
 	for _, c := range res.Check.OnlyProd {
 		t.header = append(t.header, c+"_file2")
 	}
-	if note != nil {
-		t.header = append(t.header, note.Col)
+	if len(notes) > 0 {
+		t.header = append(t.header, notes[0].Col)
 	}
 	for _, r := range res.Rows {
 		if r.Status == StatusDiff {
@@ -52,12 +52,8 @@ func (res *Result) recordsTable(note *NoteMap) table {
 		vals = append(vals, padTo(r.Common, len(res.Common))...)
 		vals = append(vals, padTo(r.Only1, len(res.Check.OnlyUAT))...)
 		vals = append(vals, padTo(r.Only2, len(res.Check.OnlyProd))...)
-		if note != nil {
-			n := ""
-			if r.Status != StatusMatch {
-				n, _ = note.Lookup(r.Keys, res.Opts.Order)
-			}
-			vals = append(vals, n)
+		if len(notes) > 0 {
+			vals = append(vals, lookupAny(notes, r.Status, r.Keys, res.Opts.Order))
 		}
 		t.rows = append(t.rows, vals)
 		t.kind = append(t.kind, kindOf(r.Status))
@@ -67,12 +63,12 @@ func (res *Result) recordsTable(note *NoteMap) table {
 
 // fieldsTable builds the field_mismatch tab: one line per differing column,
 // lines of the same key next to each other, sorted by field name.
-func (res *Result) fieldsTable(note *NoteMap) table {
+func (res *Result) fieldsTable(notes []*NoteMap) table {
 	t := table{}
 	t.header = append(t.header, res.Opts.Keys...)
 	t.header = append(t.header, colField, colValue1, colValue2)
-	if note != nil {
-		t.header = append(t.header, note.Col)
+	if len(notes) > 0 {
+		t.header = append(t.header, notes[0].Col)
 	}
 	for _, r := range res.Rows {
 		if r.Status != StatusDiff {
@@ -84,10 +80,9 @@ func (res *Result) fieldsTable(note *NoteMap) table {
 			vals := make([]string, 0, len(t.header))
 			vals = append(vals, r.Keys...)
 			vals = append(vals, d.Field, showEmpty(d.V1), showEmpty(d.V2))
-			if note != nil {
+			if len(notes) > 0 {
 				// The note map for this tab matches on the keys plus tên trường.
-				n, _ := note.Lookup(append(append([]string{}, r.Keys...), d.Field), res.Opts.Order)
-				vals = append(vals, n)
+				vals = append(vals, lookupAny(notes, r.Status, append(append([]string{}, r.Keys...), d.Field), res.Opts.Order))
 			}
 			t.rows = append(t.rows, vals)
 			t.kind = append(t.kind, "diff")
@@ -256,7 +251,7 @@ func writeTable(f *excelize.File, st *xlsxStyles, sheet string, t table, nk, not
 
 // WriteXLSX writes the three tabs. notes maps a tab name to the reference
 // notes for that tab; a missing entry means no notes on that tab.
-func (res *Result) WriteXLSX(path string, notes map[string]*NoteMap) error {
+func (res *Result) WriteXLSX(path string, notes map[string][]*NoteMap) error {
 	f := excelize.NewFile()
 	defer f.Close()
 	st := &xlsxStyles{f: f, cache: map[string]int{}}
@@ -282,7 +277,7 @@ func (res *Result) WriteXLSX(path string, notes map[string]*NoteMap) error {
 	rn := notes[sheetRecords]
 	recs := res.recordsTable(rn)
 	noteCol := 0
-	if rn != nil {
+	if len(rn) > 0 {
 		noteCol = len(recs.header)
 	}
 	if err := writeTable(f, st, sheetRecords, recs, nk, noteCol, nil); err != nil {
@@ -291,7 +286,7 @@ func (res *Result) WriteXLSX(path string, notes map[string]*NoteMap) error {
 	fn := notes[sheetFields]
 	fields := res.fieldsTable(fn)
 	noteCol = 0
-	if fn != nil {
+	if len(fn) > 0 {
 		noteCol = len(fields.header)
 	}
 	valueCol := nk + 2 // 1-based column of "giá trị file 1"
