@@ -12,6 +12,26 @@ type NoteMap struct {
 	KeyPos  []int  // positions in Options.Keys that the reference also has
 	Missing []string
 	Values  map[string]string
+	Apply   map[int]bool // row statuses (Status*) that take notes from this map; nil means all
+}
+
+// applies reports whether rows with this status take notes from nm.
+func (nm *NoteMap) applies(status int) bool {
+	return nm.Apply == nil || nm.Apply[status]
+}
+
+// lookupAny returns the note for a row from the first map that applies to
+// its status and has a note for the key.
+func lookupAny(nms []*NoteMap, status int, keys []string, order DateOrder) string {
+	for _, nm := range nms {
+		if !nm.applies(status) {
+			continue
+		}
+		if n, ok := nm.Lookup(keys, order); ok {
+			return n
+		}
+	}
+	return ""
 }
 
 // FindHeader returns the row (0-based) that holds the most key columns,
