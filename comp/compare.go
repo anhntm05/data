@@ -1,28 +1,31 @@
 package main
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 )
 
+// Row status. "file 1" is the first file picked (UAT), "file 2" the second (PROD).
 const (
-	EnvOnlyProd = iota
-	EnvOnlyUAT
-	EnvBoth
+	StatusOnly1 = iota // key only in file 1
+	StatusOnly2        // key only in file 2
+	StatusMatch        // key in both files, every compared column equal
+	StatusDiff         // key in both files, at least one compared column differs
 )
 
-var EnvLabel = map[int]string{
-	EnvOnlyProd: "Chỉ có ở PROD",
-	EnvOnlyUAT:  "Chỉ có ở UAT",
-	EnvBoth:     "Có ở cả 2",
+// StatusLabel is the text shown in the trạng thái column.
+var StatusLabel = map[int]string{
+	StatusOnly1: "chỉ file 1",
+	StatusOnly2: "chỉ file 2",
+	StatusMatch: "khớp hoàn toàn",
+	StatusDiff:  "khác",
 }
 
 // ColumnCheck is the result of matching the headers of the two files.
 type ColumnCheck struct {
-	Common   []string // in UAT file order
-	OnlyUAT  []string
-	OnlyProd []string
+	Common   []string // in file 1 order
+	OnlyUAT  []string // only in file 1
+	OnlyProd []string // only in file 2
 }
 
 func CheckColumns(uat, prod *Table) ColumnCheck {
@@ -138,46 +141,49 @@ func displayKey(row []string, idx []int, order DateOrder) string {
 
 // Options holds everything the user chose before running the comparison.
 type Options struct {
-	Keys     []string
-	Compare  []string // non-key columns to compare, in output order
-	Order    DateOrder
-	Sort     []SortSpec
-	EnvOrder [3]int // environment values in sort order
+	Keys    []string
+	Compare []string // non-key columns to compare, in output order
+	Order   DateOrder
 }
 
-// SortSpec is one level of sorting. Field is "environment", "note",
-// "khac_biet" or a column name.
-type SortSpec struct {
+// FieldDiff is one differing column of a matched key.
+type FieldDiff struct {
 	Field string
-	Desc  bool
+	V1    string // display value in file 1
+	V2    string // display value in file 2
 }
 
+// ResultRow is one key. Value slices follow the column lists in Result:
+// Common for Result.Common, Only1 for Check.OnlyUAT, Only2 for Check.OnlyProd.
+// A nil slice means the row does not exist in that file.
 type ResultRow struct {
-	Env      int
-	Keys     []string
-	UAT      []string // display values of Compare columns; nil if absent
-	Prod     []string
-	DiffCols []bool
-	Diff     string
-	Note     string
-	NoteFrom bool // note came from the reference file
+	Status int
+	Keys   []string
+	Common []string
+	Only1  []string
+	Only2  []string
+	Diffs  []FieldDiff
 }
 
 type Result struct {
-	UATName, ProdName    string
-	TotalUAT, TotalProd  int
-	OnlyUAT, OnlyProd    int
-	Matched, MatchedDiff int
-	NotesFilled          int
+	File1, File2         string
+	Total1, Total2       int
+	Only1, Only2         int
+	Matched, MatchedDiff int // keys present in both files; MatchedDiff = at least one diff
+	DiffOne, DiffMany    int // MatchedDiff split by number of differing columns
+	Check                ColumnCheck
+	Common               []string // Check.Common without the key columns
 	Rows                 []ResultRow
 	Opts                 Options
 }
 
 // Compare matches rows by key. Rows sharing a key within a file are paired
-// in the order they appear.
+// in the order they appear. Rows are sorted by status, then by key.
 func Compare(uat, prod *Table, o Options) *Result {
-	res := &Result{UATName: uat.Name(), ProdName: prod.Name(),
-		TotalUAT: len(uat.Rows), TotalProd: len(prod.Rows), Opts: o}
+	cc := CheckColumns(uat, prod)
+	res := &Result{File1: uat.Name(), File2: prod.Name(),
+		Total1: len(uat.Rows), Total2: len(prod.Rows), Check: cc, Opts: o,
+		Common: without(cc.Common, o.Keys)}
 	ui, pi := colIndex(uat), colIndex(prod)
 	ukeys, pkeys := make([]int, len(o.Keys)), make([]int, len(o.Keys))
 	for i, k := range o.Keys {
@@ -189,17 +195,10 @@ func Compare(uat, prod *Table, o Options) *Result {
 		prodGroups[k] = append(prodGroups[k], i)
 	}
 	used := make([]bool, len(prod.Rows))
-	pick := func(row []string, idx map[string]int) []string {
-		out := make([]string, len(o.Compare))
-		for i, c := range o.Compare {
+	pick := func(row []string, idx map[string]int, cols []string) []string {
+		out := make([]string, len(cols))
+		for i, c := range cols {
 			out[i] = Display(row[idx[c]], o.Order)
-		}
-		return out
-	}
-	keyVals := func(row []string, idx []int) []string {
-		out := make([]string, len(idx))
-		for i, c := range idx {
-			out[i] = Display(row[c], o.Order)
 		}
 		return out
 	}
@@ -208,36 +207,61 @@ func Compare(uat, prod *Table, o Options) *Result {
 		k := keyOf(ur, ukeys, o.Order)
 		g := prodGroups[k]
 		if len(g) == 0 {
-			res.OnlyUAT++
-			res.Rows = append(res.Rows, ResultRow{Env: EnvOnlyUAT, Keys: keyVals(ur, ukeys), UAT: pick(ur, ui)})
+			res.Only1++
+			res.Rows = append(res.Rows, ResultRow{Status: StatusOnly1,
+				Keys: pick(ur, ui, o.Keys), Common: pick(ur, ui, res.Common), Only1: pick(ur, ui, cc.OnlyUAT)})
 			continue
 		}
 		pr := prod.Rows[g[0]]
 		used[g[0]] = true
 		prodGroups[k] = g[1:]
-		rr := ResultRow{Env: EnvBoth, Keys: keyVals(ur, ukeys), UAT: pick(ur, ui), Prod: pick(pr, pi),
-			DiffCols: make([]bool, len(o.Compare))}
-		var diffs []string
-		for i, c := range o.Compare {
+		rr := ResultRow{Keys: pick(ur, ui, o.Keys), Common: pick(ur, ui, res.Common),
+			Only1: pick(ur, ui, cc.OnlyUAT), Only2: pick(pr, pi, cc.OnlyProd)}
+		for _, c := range o.Compare {
 			if CompareKey(ur[ui[c]], o.Order) != CompareKey(pr[pi[c]], o.Order) {
-				rr.DiffCols[i] = true
-				diffs = append(diffs, fmt.Sprintf("%s: UAT=%s, PROD=%s", c, showEmpty(rr.UAT[i]), showEmpty(rr.Prod[i])))
+				rr.Diffs = append(rr.Diffs, FieldDiff{Field: c,
+					V1: Display(ur[ui[c]], o.Order), V2: Display(pr[pi[c]], o.Order)})
 			}
 		}
-		rr.Diff = strings.Join(diffs, "; ")
 		res.Matched++
-		if len(diffs) > 0 {
+		rr.Status = StatusMatch
+		if n := len(rr.Diffs); n > 0 {
+			rr.Status = StatusDiff
 			res.MatchedDiff++
+			if n == 1 {
+				res.DiffOne++
+			} else {
+				res.DiffMany++
+			}
 		}
 		res.Rows = append(res.Rows, rr)
 	}
 	for i, pr := range prod.Rows {
 		if !used[i] {
-			res.OnlyProd++
-			res.Rows = append(res.Rows, ResultRow{Env: EnvOnlyProd, Keys: keyVals(pr, pkeys), Prod: pick(pr, pi)})
+			res.Only2++
+			res.Rows = append(res.Rows, ResultRow{Status: StatusOnly2,
+				Keys: pick(pr, pi, o.Keys), Common: pick(pr, pi, res.Common), Only2: pick(pr, pi, cc.OnlyProd)})
 		}
 	}
+	sortRows(res.Rows)
 	return res
+}
+
+// sortRows orders by status (file 1 only, file 2 only, match, diff), then
+// by the key columns. Rows with the same key stay next to each other.
+func sortRows(rows []ResultRow) {
+	sort.SliceStable(rows, func(a, b int) bool {
+		ra, rb := rows[a], rows[b]
+		if ra.Status != rb.Status {
+			return ra.Status < rb.Status
+		}
+		for i := range ra.Keys {
+			if c := lessValue(ra.Keys[i], rb.Keys[i]); c != 0 {
+				return c < 0
+			}
+		}
+		return false
+	})
 }
 
 func showEmpty(s string) string {
@@ -245,163 +269,4 @@ func showEmpty(s string) string {
 		return "(trống)"
 	}
 	return s
-}
-
-// NeedsNote is false for rows present on both sides with no difference.
-func (r ResultRow) NeedsNote() bool { return r.Env != EnvBoth || r.Diff != "" }
-
-// RefNotes maps a normalized key to the note found in a reference file.
-type RefNotes struct {
-	Notes   map[string]string
-	Header  int      // 1-based row of the header in the reference file
-	KeyPos  []int    // positions in Options.Keys used for matching
-	Missing []string // key columns the reference file does not have
-}
-
-// LoadRefNotes finds the header row: the row with a "note" column and the
-// most key columns (names compared case-insensitively). When the reference
-// lacks some key columns, notes are matched on the key columns it has.
-func LoadRefNotes(path string, keys []string, order DateOrder) (*RefNotes, error) {
-	rows, err := ReadAnyRows(path)
-	if err != nil {
-		return nil, err
-	}
-	bestRow, bestNote := -1, 0
-	var bestPos []int // matched key position -> column in the reference
-	var bestKeys []int
-	for hi, hdr := range rows {
-		pos := map[string]int{}
-		for i, h := range hdr {
-			pos[strings.ToLower(strings.TrimSpace(unwrapExcelText(h)))] = i
-		}
-		noteCol, ok := pos["note"]
-		if !ok {
-			continue
-		}
-		var cols, kp []int
-		for i, k := range keys {
-			if c, ok := pos[strings.ToLower(k)]; ok {
-				cols, kp = append(cols, c), append(kp, i)
-			}
-		}
-		if len(kp) > len(bestKeys) {
-			bestRow, bestNote, bestPos, bestKeys = hi, noteCol, cols, kp
-		}
-		if len(kp) == len(keys) {
-			break
-		}
-	}
-	if bestRow < 0 {
-		return nil, fmt.Errorf("không tìm thấy dòng header có cột note và ít nhất 1 cột key (%s)", strings.Join(keys, ", "))
-	}
-	rn := &RefNotes{Notes: map[string]string{}, Header: bestRow + 1, KeyPos: bestKeys}
-	have := map[int]bool{}
-	for _, k := range bestKeys {
-		have[k] = true
-	}
-	for i, k := range keys {
-		if !have[i] {
-			rn.Missing = append(rn.Missing, k)
-		}
-	}
-	for _, r := range rows[bestRow+1:] {
-		get := func(i int) string {
-			if i < len(r) {
-				return unwrapExcelText(r[i])
-			}
-			return ""
-		}
-		note := strings.TrimSpace(get(bestNote))
-		if note == "" {
-			continue
-		}
-		parts := make([]string, len(bestPos))
-		for i, c := range bestPos {
-			parts[i] = CompareKey(get(c), order)
-		}
-		k := strings.Join(parts, "\x1f")
-		if _, exists := rn.Notes[k]; !exists {
-			rn.Notes[k] = note
-		}
-	}
-	return rn, nil
-}
-
-// ApplyNotes copies notes from the reference into rows that need one.
-func (res *Result) ApplyNotes(rn *RefNotes) {
-	for i := range res.Rows {
-		r := &res.Rows[i]
-		if !r.NeedsNote() {
-			continue
-		}
-		parts := make([]string, len(rn.KeyPos))
-		for j, p := range rn.KeyPos {
-			parts[j] = CompareKey(r.Keys[p], res.Opts.Order)
-		}
-		if n, ok := rn.Notes[strings.Join(parts, "\x1f")]; ok {
-			r.Note, r.NoteFrom = n, true
-			res.NotesFilled++
-		}
-	}
-}
-
-// SortRows applies the sort levels. Empty values always go last.
-func (res *Result) SortRows() {
-	o := res.Opts
-	envRank := map[int]int{}
-	for i, e := range o.EnvOrder {
-		envRank[e] = i
-	}
-	keyPos, cmpPos := map[string]int{}, map[string]int{}
-	for i, k := range o.Keys {
-		keyPos[k] = i
-	}
-	for i, c := range o.Compare {
-		cmpPos[c] = i
-	}
-	value := func(r *ResultRow, f string) string {
-		switch f {
-		case "note":
-			return r.Note
-		case "khac_biet":
-			return r.Diff
-		}
-		if i, ok := keyPos[f]; ok {
-			return r.Keys[i]
-		}
-		if i, ok := cmpPos[f]; ok {
-			if r.UAT != nil {
-				return r.UAT[i]
-			}
-			return r.Prod[i]
-		}
-		return ""
-	}
-	sort.SliceStable(res.Rows, func(a, b int) bool {
-		ra, rb := &res.Rows[a], &res.Rows[b]
-		for _, s := range o.Sort {
-			if s.Field == "environment" {
-				if d := envRank[ra.Env] - envRank[rb.Env]; d != 0 {
-					return d < 0
-				}
-				continue
-			}
-			va, vb := value(ra, s.Field), value(rb, s.Field)
-			if va == vb {
-				continue
-			}
-			if va == "" || vb == "" {
-				return vb == ""
-			}
-			c := lessValue(va, vb)
-			if c == 0 {
-				continue
-			}
-			if s.Desc {
-				return c > 0
-			}
-			return c < 0
-		}
-		return false
-	})
 }
